@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { MoreHorizontal, Send } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { addComment, deleteComment, editComment, listComments } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
 import { containsBlockedContact, sanitizeComment } from '../lib/validation'
 import { timeAgo } from '../lib/time'
+import Avatar from './ui/Avatar'
+import Button from './ui/Button'
 
-export default function Comments({ reportId }) {
+export default function Comments({ reportId, ownerId, ownerKind }) {
   const { user } = useAuth()
   useDbVersion()
   const items = listComments(reportId)
@@ -17,10 +20,9 @@ export default function Comments({ reportId }) {
   const submit = (e) => {
     e.preventDefault()
     setErr('')
-    if (!user) return
-    if (!text.trim()) return
+    if (!user || !text.trim()) return
     if (containsBlockedContact(text)) {
-      setErr('Komentar tidak boleh memuat nomor telepon, email, atau tautan (demi privasi).')
+      setErr('Nomor telepon dan email tidak bisa dicantumkan di komentar. Setelah klaim diterima, kalian bisa saling menghubungi lewat WhatsApp.')
       return
     }
     addComment(reportId, user.id, sanitizeComment(text), replyTo)
@@ -31,72 +33,103 @@ export default function Comments({ reportId }) {
   const top = items.filter((c) => !c.parent_id)
   const replies = (id) => items.filter((c) => c.parent_id === id)
 
-  const Item = ({ c, depth = 0 }) => (
-    <div className={`${depth ? 'ml-6 border-l-2 pl-3' : ''} py-2`}>
-      <div className="flex items-center gap-2 text-sm">
-        <span className="font-semibold">{c.user?.nama || '?'}</span>
-        <span className="text-xs text-gray-500">{timeAgo(c.created_at)}</span>
-        {user?.id === c.user_id && (
-          <span className="ml-auto flex gap-2 text-xs">
-            <button
-              className="underline"
-              onClick={() => {
-                const v = prompt('Edit komentar:', c.isi)
-                if (v !== null) {
-                  if (containsBlockedContact(v)) return alert('Mengandung kontak/tautan, ditolak.')
-                  editComment(c.id, user.id, sanitizeComment(v))
-                }
-              }}
-            >
-              Edit
-            </button>
-            <button className="underline text-red-600" onClick={() => confirm('Hapus komentar?') && deleteComment(c.id, user.id)}>
-              Hapus
-            </button>
-          </span>
-        )}
+  const Item = ({ c, depth = 0 }) => {
+    const mine = user?.id === c.user_id
+    const isOwner = c.user_id === ownerId
+    return (
+      <div className={depth ? 'ml-10 border-l-2 border-slate-200 pl-3' : ''}>
+        <div className="flex items-start gap-2 py-2">
+          <Avatar nama={c.user?.nama} foto={c.user?.foto_profil} size={32} />
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-1.5 text-sm">
+              <span className="font-semibold text-slate-900">{c.user?.nama || 'Pengguna'}</span>
+              {isOwner && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{ownerKind}</span>
+              )}
+              <span className="text-xs font-medium text-slate-500">{timeAgo(c.created_at)}</span>
+            </p>
+            <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-900">{c.isi}</p>
+            {!depth && user && (
+              <button onClick={() => setReplyTo(c.id)} className="mt-1 text-xs font-medium text-slate-600 underline">
+                Balas
+              </button>
+            )}
+          </div>
+          {mine && (
+            <details className="relative shrink-0">
+              <summary aria-label="Opsi komentar" className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 [&::-webkit-details-marker]:hidden">
+                <MoreHorizontal size={20} aria-hidden="true" />
+              </summary>
+              <div className="absolute right-0 z-10 w-32 rounded-xl border border-slate-200 bg-white p-1 shadow-popover">
+                <button
+                  className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  onClick={(e) => {
+                    e.currentTarget.closest('details').open = false
+                    const v = prompt('Edit komentar:', c.isi)
+                    if (v === null) return
+                    if (containsBlockedContact(v)) {
+                      alert('Nomor telepon dan email tidak bisa dicantumkan di komentar.')
+                      return
+                    }
+                    if (v.trim()) editComment(c.id, user.id, sanitizeComment(v))
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  className="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                  onClick={(e) => {
+                    e.currentTarget.closest('details').open = false
+                    if (confirm('Hapus komentar ini?')) deleteComment(c.id, user.id)
+                  }}
+                >
+                  Hapus
+                </button>
+              </div>
+            </details>
+          )}
+        </div>
+        {replies(c.id).map((r) => <Item key={r.id} c={r} depth={depth + 1} />)}
       </div>
-      <p className="mt-0.5 whitespace-pre-wrap text-sm">{c.isi}</p>
-      {!depth && user && (
-        <button className="mt-1 text-xs text-emerald-700 underline" onClick={() => setReplyTo(c.id)}>
-          Balas
-        </button>
-      )}
-      {replies(c.id).map((r) => <Item key={r.id} c={r} depth={depth + 1} />)}
-    </div>
-  )
+    )
+  }
 
   return (
-    <section className="mt-6 rounded-xl border bg-white p-4">
-      <h2 className="font-bold">Komentar ({items.length})</h2>
-      <div className="mt-2 divide-y">
-        {top.length === 0 && <p className="py-3 text-sm text-gray-500">Belum ada komentar.</p>}
+    <section aria-label="Komentar" className="rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-lg font-semibold text-slate-900">Komentar ({items.length})</h2>
+      <div className="mt-1 divide-y divide-slate-100">
+        {top.length === 0 && <p className="py-3 text-sm text-slate-500">Belum ada komentar.</p>}
         {top.map((c) => <Item key={c.id} c={c} />)}
       </div>
       {user ? (
         <form onSubmit={submit} className="mt-3">
           {replyTo && (
-            <p className="mb-1 text-xs">
-              Membalas komentar… <button type="button" className="underline" onClick={() => setReplyTo(null)}>batal</button>
+            <p className="mb-1 text-xs text-slate-600">
+              Membalas komentar… <button type="button" onClick={() => setReplyTo(null)} className="underline">batal</button>
             </p>
           )}
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={2}
-            maxLength={1000}
-            placeholder="Tulis komentar (tanpa nomor HP/email/link)…"
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          />
-          {err && <p className="mt-1 text-sm text-red-600">{err}</p>}
-          <button className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-            Kirim
-          </button>
+          <div className="flex items-end gap-2">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={1}
+              maxLength={1000}
+              aria-label="Tulis komentar"
+              placeholder="Tulis komentar…"
+              className="max-h-32 min-h-[48px] flex-1 rounded-lg border border-slate-300 px-3 py-3 text-slate-900 placeholder:text-slate-500"
+            />
+            <button type="submit" aria-label="Kirim komentar" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white hover:bg-slate-800">
+              <Send size={20} aria-hidden="true" />
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Jangan tulis nomor telepon atau email di komentar.</p>
+          {err && <p className="mt-1 text-sm text-red-700" role="alert">{err}</p>}
         </form>
       ) : (
-        <p className="mt-3 text-sm">
-          <Link to="/masuk" className="font-semibold text-emerald-700 underline">Masuk</Link> untuk berkomentar.
-        </p>
+        <div className="mt-3 rounded-xl bg-slate-50 p-3 text-center">
+          <p className="text-sm text-slate-600">Masuk untuk berkomentar.</p>
+          <Link to="/masuk" className="mt-2 inline-block"><Button variant="secondary" size="sm">Masuk</Button></Link>
+        </div>
       )}
     </section>
   )

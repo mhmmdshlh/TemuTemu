@@ -275,7 +275,7 @@ export function getSecret(reportId, requesterId) {
   return db.secrets.find((s) => s.report_id === reportId)?.detail_rahasia || ''
 }
 
-export function listReports({ type, q = '', kategori = '', lokasi = '', status = '', dari = '', sampai = '', page = 1, perPage = 20, mine = null } = {}) {
+export function listReports({ type, q = '', kategori = '', lokasi = '', status = '', dari = '', sampai = '', page = 1, perPage = 20, mine = null, sort = 'terbaru' } = {}) {
   const db = loadDb()
   let arr = db.reports.filter((r) => r.type === type)
   if (mine) arr = arr.filter((r) => r.user_id === mine)
@@ -294,7 +294,7 @@ export function listReports({ type, q = '', kategori = '', lokasi = '', status =
       return words.every((w) => hay.includes(w) || hay.split(/\s+/).some((h) => lev(h, w) <= 2))
     })
   }
-  arr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  arr.sort((a, b) => (sort === 'terlama' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at)))
   const total = arr.length
   const items = arr.slice((page - 1) * perPage, page * perPage).map((r) => {
     const owner = db.users.find((u) => u.id === r.user_id)

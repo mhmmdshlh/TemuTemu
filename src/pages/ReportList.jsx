@@ -1,9 +1,14 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { PackageSearch } from 'lucide-react'
+import Layout from '../components/Layout'
+import SegmentedControl from '../components/nav/SegmentedControl'
 import ReportCard from '../components/ReportCard'
-import SearchFilter from '../components/SearchFilter'
+import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../components/SearchFilter'
+import Button from '../components/ui/Button'
+import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
 import { FOUND_STATUS, LOST_STATUS } from '../lib/constants'
-import { listReports } from '../lib/mockDb'
+import { listReports, matchesForUser } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -11,50 +16,117 @@ const PER_PAGE = 20
 
 export default function ReportList({ type }) {
   const { user } = useAuth()
-  const isLost = type === 'lost'
-  const [f, setF] = useState({ q: '', kategori: '', lokasi: '', status: '', dari: '', sampai: '', page: 1 })
-  const v = useDbVersion() // segarkan daftar saat ada laporan/komentar/match baru
+  const [params] = useSearchParams()
+  const v = useDbVersion()
+  const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', status: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
+  const [firstLoad, setFirstLoad] = useState(true)
+  const moreRef = useRef(null)
+
+  // Pulihkan posisi scroll saat kembali dari detail
+  useEffect(() => {
+    const y = sessionStorage.getItem(`scroll_${type}`)
+    if (y) requestAnimationFrame(() => window.scrollTo(0, Number(y)))
+  }, [type])
+
+  useEffect(() => () => sessionStorage.setItem(`scroll_${type}`, String(window.scrollY)), [type])
+
+  // Skeleton singkat saat pertama dibuka
+  useEffect(() => {
+    const t = setTimeout(() => setFirstLoad(false), 250)
+    return () => clearTimeout(t)
+  }, [])
+  const loading = firstLoad
 
   const data = useMemo(
-    () => listReports({ type, ...f, perPage: PER_PAGE }),
+    () => listReports({ type, ...f, perPage: f.limit }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, v],
+    [type, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit, v],
   )
 
+  const matchIds = useMemo(() => {
+    if (!user) return new Set()
+    const ms = matchesForUser(user.id).filter((m) => m.status === 'baru')
+    return new Set(ms.flatMap((m) => [m.lost_report_id, m.found_report_id]))
+  }, [user, v]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Muat otomatis saat mendekati akhir
+  useEffect(() => {
+    const el = moreRef.current
+    if (!el || data.items.length >= data.total) return
+    const obs = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) setF((p) => ({ ...p, limit: p.limit + PER_PAGE }))
+      },
+      { rootMargin: '400px' },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [data.items.length, data.total])
+
+  const isLost = type === 'lost'
+  const statuses = isLost ? LOST_STATUS : FOUND_STATUS
+  const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
+
+  const set = (next) => setF(typeof next === 'function' ? next : { ...next, limit: typeof next.limit === 'number' ? next.limit : PER_PAGE })
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold">{isLost ? 'Barang Hilang' : 'Barang Ditemukan'}</h1>
-        {user ? (
-          <Link to={`/buat?type=${type}`} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-emerald-700">
-            + Lapor {isLost ? 'Kehilangan' : 'Penemuan'}
-          </Link>
-        ) : (
-          <Link to="/masuk" className="rounded-lg border px-3 py-1.5 text-sm">Masuk untuk melapor</Link>
-        )}
+    <Layout fabSide={type} wide>
+      <SegmentedControl />
+      <div className="mt-3 lg:mt-6 lg:flex lg:gap-6">
+        <DesktopSidebar f={f} set={set} statuses={statuses} />
+        <div className="min-w-0 flex-1">
+          <div className="lg:flex lg:items-center lg:justify-between">
+            <h1 className="hidden text-[28px] font-bold leading-9 lg:block">
+              {isLost ? 'Barang hilang' : 'Barang ditemukan'} ({data.total})
+            </h1>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 lg:w-[360px] lg:flex-none">
+                <SearchBar value={f.q} onChange={(q) => set({ ...f, q, page: 1 })} />
+              </div>
+              <SortSelect value={f.sort} onChange={(sort) => set({ ...f, sort, page: 1 })} />
+            </div>
+          </div>
+          <div className="mt-2"><MobileFilterBar f={f} set={set} statuses={statuses} /></div>
+
+          <div className="mt-3 grid gap-3 lg:mt-4 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
+            {loading ? (
+              <div className="col-span-full"><ListSkeleton /></div>
+            ) : data.items.length === 0 ? (
+              <div className="col-span-full">
+                <EmptyState
+                  icon={<PackageSearch size={40} aria-hidden="true" />}
+                  title={filtered ? 'Tidak ada laporan yang cocok.' : 'Belum ada laporan'}
+                  desc={filtered ? 'Coba ubah kata kunci atau reset filter.' : undefined}
+                  action={
+                    filtered ? (
+                      <span className="flex flex-wrap justify-center gap-2">
+                        <Button variant="secondary" onClick={() => set({ q: '', kategori: '', lokasi: '', status: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })}>Reset filter</Button>
+                        <Link to={isLost ? '/buat/hilang' : '/buat/temuan'} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                          {isLost ? 'Buat laporan kehilangan' : 'Buat laporan penemuan'}
+                        </Link>
+                      </span>
+                    ) : (
+                      <Link to={isLost ? '/buat/hilang' : '/buat/temuan'} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                        {isLost ? 'Buat laporan kehilangan' : 'Buat laporan penemuan'}
+                      </Link>
+                    )
+                  }
+                />
+              </div>
+            ) : (
+              data.items.map((r) => <ReportCard key={r.id} r={r} hasMatch={matchIds.has(r.id)} />)
+            )}
+          </div>
+
+          {!loading && data.items.length < data.total && (
+            <div ref={moreRef} className="mt-4 text-center">
+              <Button variant="secondary" onClick={() => setF((p) => ({ ...p, limit: p.limit + PER_PAGE }))}>
+                Muat lebih banyak ({data.items.length}/{data.total})
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
-
-      <SearchFilter f={f} set={setF} statuses={isLost ? LOST_STATUS : FOUND_STATUS} />
-
-      <p className="text-sm text-gray-600">{data.total} laporan • urut terbaru</p>
-
-      {data.items.length === 0 ? (
-        <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">
-          Belum ada laporan yang cocok. Coba ubah kata kunci atau filter.
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {data.items.map((r) => <ReportCard key={r.id} r={r} />)}
-        </div>
-      )}
-
-      {data.pages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">‹ Prev</button>
-          <span className="text-sm">{f.page} / {data.pages}</span>
-          <button disabled={f.page >= data.pages} onClick={() => setF({ ...f, page: f.page + 1 })} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">Next ›</button>
-        </div>
-      )}
-    </div>
+    </Layout>
   )
 }
