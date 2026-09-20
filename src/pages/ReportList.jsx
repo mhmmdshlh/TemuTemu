@@ -8,25 +8,107 @@ import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../compo
 import Button from '../components/ui/Button'
 import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
 import { countReportsByType, listReports, matchesForUser } from '../lib/mockDb'
+import { useSnappedIndex } from '../lib/useSnap'
 import { useAuth } from '../contexts/AuthContext'
 
 const PER_PAGE = 20
+
+/** Urutan panel pager mobile: Semua → Barang hilang → Ditemukan. */
+const JENIS_ORDER = ['semua', 'lost', 'found']
 
 /** 'semua' = barang hilang dan ditemukan sekaligus. */
 const JENIS_VALID = ['lost', 'found']
 const JUDUL = { semua: 'Laporan', lost: 'Barang hilang', found: 'Barang ditemukan' }
 
+/** Panel list untuk satu jenis — dipakai pager swipe di mobile. */
+function JenisPanel({ jenis, f, setFilter, active, loading, matchIds }) {
+  const moreRef = useRef(null)
+  const isSemua = jenis === 'semua'
+  const data = useMemo(
+    () => listReports({ ...f, type: isSemua ? null : jenis, perPage: f.limit }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [jenis, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit],
+  )
+
+  // Muat otomatis saat mendekati akhir — hanya panel aktif yang menambah limit
+  // (tiga panel berada di posisi scroll vertikal yang sama; tanpa guard ini
+  // limit bisa naik 3× sekaligus).
+  useEffect(() => {
+    if (!active) return
+    const el = moreRef.current
+    if (!el || data.items.length >= data.total) return
+    const obs = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) setFilter((p) => ({ ...p, limit: p.limit + PER_PAGE }))
+      },
+      { rootMargin: '400px' },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [active, data.items.length, data.total, setFilter])
+
+  const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
+  const buatTo = jenis === 'found' ? '/buat/temuan' : '/buat/hilang'
+  const buatLabel = jenis === 'found'
+    ? 'Buat laporan penemuan'
+    : jenis === 'lost' ? 'Buat laporan kehilangan' : 'Buat laporan'
+
+  return (
+    <div aria-label={JUDUL[jenis]}>
+      <div className="mt-3 grid gap-3">
+        {loading ? (
+          <div className="col-span-full"><ListSkeleton /></div>
+        ) : data.items.length === 0 ? (
+          <div className="col-span-full">
+            <EmptyState
+              icon={<PackageSearch size={40} aria-hidden="true" />}
+              title={filtered ? 'Tidak ada laporan yang cocok.' : 'Belum ada laporan'}
+              desc={filtered ? 'Coba ubah kata kunci atau reset filter.' : undefined}
+              action={
+                filtered ? (
+                  <span className="flex flex-wrap justify-center gap-2">
+                    <Button variant="secondary" onClick={() => setFilter({ q: '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })}>Reset filter</Button>
+                    <Link to={buatTo} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                      {buatLabel}
+                    </Link>
+                  </span>
+                ) : (
+                  <Link to={buatTo} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                    {buatLabel}
+                  </Link>
+                )
+              }
+            />
+          </div>
+        ) : (
+          data.items.map((r) => <ReportCard key={r.id} r={r} hasMatch={matchIds.has(r.id)} />)
+        )}
+      </div>
+
+      {!loading && data.items.length < data.total && (
+        <div ref={moreRef} className="mt-4 text-center">
+          <Button variant="secondary" onClick={() => setFilter((p) => ({ ...p, limit: p.limit + PER_PAGE }))}>
+            Muat lebih banyak ({data.items.length}/{data.total})
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ReportList() {
-    const { user } = useAuth()
+  const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
   const [firstLoad, setFirstLoad] = useState(true)
   const moreRef = useRef(null)
+  const pagerRef = useRef(null)
 
   // Jenis laporan disimpan di URL supaya tautan lama (/hilang, /ditemukan) dan
   // tautan dari halaman lain tetap bisa membuka daftar dengan jenis tertentu.
   const jenisParam = params.get('jenis')
   const jenis = JENIS_VALID.includes(jenisParam) ? jenisParam : 'semua'
+  const indexOfJenis = JENIS_ORDER.indexOf(jenis)
   const setJenis = (next) => {
     const p = new URLSearchParams(params)
     if (next === 'semua') p.delete('jenis')
@@ -49,6 +131,21 @@ export default function ReportList() {
   }, [])
   const loading = firstLoad
 
+  // Pager mobile: swipe mengubah jenis (via URL), jenis berubah → geser ke panel
+  // yang sesuai (klik tab, redirect /hilang, dsb).
+  const { scrollToIndex } = useSnappedIndex({
+    containerRef: pagerRef,
+    count: JENIS_ORDER.length,
+    initialIndex: indexOfJenis,
+    onIndexChange: (i) => setJenis(JENIS_ORDER[i]),
+  })
+
+  useEffect(() => {
+    scrollToIndex(indexOfJenis)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jenis])
+
+  // List aktif — dipakai desktop (mobile memakai JenisPanel).
   const data = useMemo(
     () => listReports({ ...f, type: jenis === 'semua' ? null : jenis, perPage: f.limit }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,7 +165,7 @@ export default function ReportList() {
     return new Set(ms.flatMap((m) => [m.lost_report_id, m.found_report_id]))
   }, [user, f.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Muat otomatis saat mendekati akhir
+  // Muat otomatis saat mendekati akhir (desktop)
   useEffect(() => {
     const el = moreRef.current
     if (!el || data.items.length >= data.total) return
@@ -82,7 +179,6 @@ export default function ReportList() {
     return () => obs.disconnect()
   }, [data.items.length, data.total])
 
-  
   const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
   // Aksi buat laporan mengikuti jenis yang sedang dilihat.
   const buatTo = jenis === 'found' ? '/buat/temuan' : '/buat/hilang'
@@ -111,7 +207,24 @@ export default function ReportList() {
           </div>
           <div className="mt-2"><MobileFilterBar f={f} set={set} /></div>
 
-          <div className="mt-3 grid gap-3 lg:mt-4 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
+          {/* Mobile: pager scroll snap antar jenis (Semua | Hilang | Ditemukan) */}
+          <div
+            ref={pagerRef}
+            aria-label="Daftar laporan per jenis"
+            className="-mx-4 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain no-scrollbar md:-mx-6 lg:hidden"
+          >
+            {JENIS_ORDER.map((j) => (
+              <div
+                key={j}
+                className="w-full shrink-0 snap-start px-4 md:px-6"
+              >
+                <JenisPanel jenis={j} f={f} setFilter={set} active={jenis === j} loading={loading} matchIds={matchIds} />
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: grid list aktif */}
+          <div className="mt-3 hidden grid gap-3 lg:mt-4 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {loading ? (
               <div className="col-span-full"><ListSkeleton /></div>
             ) : data.items.length === 0 ? (
@@ -142,7 +255,7 @@ export default function ReportList() {
           </div>
 
           {!loading && data.items.length < data.total && (
-            <div ref={moreRef} className="mt-4 text-center">
+            <div ref={moreRef} className="mt-4 hidden text-center lg:block">
               <Button variant="secondary" onClick={() => setF((p) => ({ ...p, limit: p.limit + PER_PAGE }))}>
                 Muat lebih banyak ({data.items.length}/{data.total})
               </Button>

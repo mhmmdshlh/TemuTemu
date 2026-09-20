@@ -54,6 +54,14 @@ textarea {
   overflow: hidden;
 }
 
+/* Sembunyikan scrollbar pada scroller horizontal (pager scroll snap) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Hormati prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *,
