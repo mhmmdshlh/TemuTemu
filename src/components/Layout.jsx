@@ -7,6 +7,15 @@ import { useDbVersion } from '../lib/useDb'
 import Avatar from './ui/Avatar'
 import Button from './ui/Button'
 
+/** Logo "Temu" hijau + "Temu" warna dasar. */
+function Logo() {
+  return (
+    <span>
+      <span className="text-[#3B7A27]">Temu</span>Temu
+    </span>
+  )
+}
+
 const NAV_ITEMS = [
   { to: '/', label: 'Beranda', Icon: Home, end: true },
   { to: '/laporan', label: 'Laporan', Icon: PackageSearch },
@@ -193,7 +202,7 @@ export default function Layout({
             </>
           ) : (
             <>
-              <Link to="/" className="text-lg font-bold tracking-tight">TemuTemu</Link>
+              <Link to="/" className="text-lg font-bold tracking-tight"><Logo /></Link>
               <div className="ml-auto flex items-center gap-1">
                 {user ? (
                   <>
@@ -209,7 +218,7 @@ export default function Layout({
         </div>
         {/* Desktop navbar 64px */}
         <div className="mx-auto hidden h-16 max-w-6xl items-center gap-6 px-8 lg:flex">
-          <Link to="/" className="text-xl font-bold tracking-tight">TemuTemu</Link>
+          <Link to="/" className="text-xl font-bold tracking-tight"><Logo /></Link>
           <nav aria-label="Navigasi utama" className="flex items-center gap-5">
             {desktopLinks.map(({ to, label, end }) => (
               <NavLink
@@ -249,7 +258,7 @@ export default function Layout({
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl space-y-1 px-4 py-5 text-sm text-slate-600 md:px-6 lg:px-8">
-          <p className="font-semibold text-slate-900">TemuTemu</p>
+          <p className="font-semibold text-slate-900"><Logo /></p>
           <p>Untuk barang yang hilang atau ditemukan di lingkungan kampus.</p>
           <p>
             <Link to="/syarat" className="underline">Syarat dan Ketentuan</Link>
