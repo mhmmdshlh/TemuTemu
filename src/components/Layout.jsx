@@ -183,6 +183,15 @@ export default function Layout({
     { to: user ? '/saya' : '/masuk', label: 'Aktivitas saya' },
   ]
 
+  // Footer harus membersihkan overlay fixed mobile agar tidak terpotong:
+  // BottomNav (h-16 = 4rem) atau StickyBar (min-h-[72px] = 4.5rem), keduanya
+  // menambah safe-area inset pada dirinya sendiri.
+  const footerPad = stickyBar
+    ? 'pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0'
+    : bottomNav
+      ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0'
+      : 'pb-5'
+
   return (
     <div className="flex min-h-dvh flex-col bg-slate-50 text-slate-900">
       <a href="#konten" className="sr-only focus:not-sr-only focus:absolute focus:z-[70] focus:bg-white focus:p-2">Lewati ke konten</a>
@@ -256,8 +265,8 @@ export default function Layout({
         {children}
       </main>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto max-w-6xl space-y-1 px-4 py-5 text-sm text-slate-600 md:px-6 lg:px-8">
+      <footer className={`border-t border-slate-200 bg-white ${footerPad}`}>
+        <div className="mx-auto max-w-6xl space-y-1 px-4 pt-5 text-sm text-slate-600 md:px-6 lg:py-5 lg:px-8">
           <p className="font-semibold text-slate-900"><Logo /></p>
           <p>Untuk barang yang hilang atau ditemukan di lingkungan kampus.</p>
           <p>
