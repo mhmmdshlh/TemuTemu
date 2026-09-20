@@ -11,6 +11,8 @@ import ReportDetail from './pages/ReportDetail'
 import ReportForm from './pages/ReportForm'
 import ReportList from './pages/ReportList'
 import Saya from './pages/Saya'
+import TemuTemu from './pages/TemuTemu'
+import TemuTemuDetail from './pages/TemuTemuDetail'
 
 export default function App() {
   return (
@@ -18,6 +20,8 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/laporan" element={<ReportList />} />
       <Route path="/laporan/:id" element={<ReportDetail />} />
+      <Route path="/temutemu" element={<TemuTemu />} />
+      <Route path="/temutemu/:id" element={<TemuTemuDetail />} />
       <Route path="/masuk" element={<Masuk />} />
       <Route path="/syarat" element={<Legal kind="syarat" />} />
       <Route path="/privasi" element={<Legal kind="privasi" />} />

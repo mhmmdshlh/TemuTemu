@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Bell, ChevronDown, Home, PackageSearch, Plus, User } from 'lucide-react'
+import { Bell, ChevronDown, Handshake, Home, PackageSearch, Plus, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { listNotifications, unreadCount } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
@@ -19,6 +19,7 @@ function Logo() {
 const NAV_ITEMS = [
   { to: '/', label: 'Beranda', Icon: Home, end: true },
   { to: '/laporan', label: 'Laporan', Icon: PackageSearch },
+  { to: '/temutemu', label: 'TemuTemu', Icon: Handshake },
   { to: '/saya', label: 'Aktivitas', Icon: User },
 ]
 
@@ -26,7 +27,7 @@ function BottomNav() {
   const { user } = useAuth()
   return (
     <nav aria-label="Navigasi utama" className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
-      <div className="grid h-16 grid-cols-3">
+      <div className="grid h-16 grid-cols-4">
         {NAV_ITEMS.map(({ to, label, Icon, end }) => (
           <NavLink
             key={to}
@@ -180,6 +181,7 @@ export default function Layout({
   const desktopLinks = [
     { to: '/', label: 'Beranda', end: true },
     { to: '/laporan', label: 'Laporan' },
+    { to: '/temutemu', label: 'TemuTemu' },
     { to: user ? '/saya' : '/masuk', label: 'Aktivitas saya' },
   ]
 

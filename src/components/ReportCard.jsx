@@ -9,11 +9,11 @@ import CategoryIcon from './ui/CategoryIcon'
  * Mobile: kartu horizontal (foto 88px kiri).
  * Desktop: kartu vertikal di grid (foto 4:3 di atas).
  */
-export default function ReportCard({ r, hasMatch = false }) {
+export default function ReportCard({ r, hasMatch = false, toPrefix = '/laporan' }) {
   const cover = r.photos?.[0]?.url
   return (
     <Link
-      to={`/laporan/${r.id}`}
+      to={`${toPrefix}/${r.id}`}
       className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 transition duration-150 ease-out hover:border-slate-300 lg:flex-col lg:gap-0 lg:p-0"
     >
       <span className="block h-[88px] w-[88px] shrink-0 overflow-hidden rounded-lg bg-slate-100 lg:h-auto lg:w-full lg:rounded-b-none lg:rounded-t-xl lg:aspect-[4/3]">
