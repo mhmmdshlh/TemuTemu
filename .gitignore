@@ -1,3 +1,5 @@
 dist/
 node_modules/
 ignore/
+.env*
+!.env.local.example

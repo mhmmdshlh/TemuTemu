@@ -6,7 +6,7 @@ import Button from '../components/ui/Button'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { PASSWORD_MIN_LENGTH, isValidEmail, isValidPassword } from '../lib/validation'
-import { DEMO_PASSWORD } from '../lib/password'
+
 import { FAKULTAS, USER_STATUS } from '../lib/constants'
 
 function Field({ label, optional, hint, error, children, id }) {
@@ -110,7 +110,15 @@ export default function Masuk() {
     setBusy(true)
     try {
       if (tab === 'masuk') await login({ wa: waLocal, password })
-      else await register({ nama, wa: waLocal, email, password, konfirmasi, status, fakultas })
+      else {
+        const hasil = await register({ nama, wa: waLocal, email, password, konfirmasi, status, fakultas })
+        if (hasil?.needsVerification) {
+          toast.info('Akun dibuat. Cek email untuk verifikasi, lalu masuk.')
+          gantiTab('masuk')
+          return
+        }
+        toast.success('Akun dibuat. Selamat datang!')
+      }
       nav(redirect, { replace: true })
     } catch (ex) {
       setErr(ex.message)
@@ -199,7 +207,7 @@ export default function Masuk() {
           </Field>
 
           {tab === 'daftar' && (
-            <Field label="Email pribadi" id="email" optional hint="Boleh dikosongkan.">
+            <Field label="Email pribadi" id="email">
               <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@email.com" autoComplete="email" className={inputCls} />
             </Field>
           )}
@@ -240,10 +248,6 @@ export default function Masuk() {
             : <>Sudah punya akun? Pilih tab <strong>Masuk</strong>.</>}
         </p>
 
-        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          Mode demo, data hanya tersimpan di browser ini. Akun contoh: <strong>+62 812-3456-7890</strong> atau{' '}
-          <strong>+62 898-7654-3210</strong>, password <strong>{DEMO_PASSWORD}</strong>.
-        </p>
       </div>
     </Layout>
   )

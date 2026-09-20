@@ -1,6 +1,7 @@
 /** Segmented control mobile: sticky di bawah app bar. Memilih jenis laporan.
- *  counts: { semua, lost, found } — jumlah laporan pada tiap jenis. */
-export default function SegmentedControl({ jenis, onChange, counts = {} }) {
+ *  counts: { semua, lost, found } — jumlah laporan pada tiap jenis.
+ *  loading: boolean — saat true, tampilkan placeholder angka. */
+export default function SegmentedControl({ jenis, onChange, counts = {}, loading = false }) {
   const seg = (id, activeCls, label) => (
     <button
       key={id}
@@ -9,7 +10,10 @@ export default function SegmentedControl({ jenis, onChange, counts = {} }) {
       aria-pressed={jenis === id}
       className={`flex min-h-11 flex-1 items-center justify-center text-sm ${jenis === id ? `border-b-2 font-semibold ${activeCls}` : 'text-slate-600'}`}
     >
-      <span className="w-full py-2 text-center">{label}{typeof counts[id] === 'number' ? `(${counts[id]})` : ''}</span>
+      <span className="w-full py-2 text-center">
+        {label}
+        {typeof counts[id] === 'number' && !loading ? `(${counts[id]})` : ''}
+      </span>
     </button>
   )
   return (

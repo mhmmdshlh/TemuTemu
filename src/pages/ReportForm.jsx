@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertCircle, CheckCircle2, ChevronDown, Search } from 'lucide-react'
 import Layout, { StickyBar } from '../components/Layout'
-import MatchCard from '../components/MatchCard'
 import PhotoUploader from '../components/PhotoUploader'
 import Button from '../components/ui/Button'
 import Sheet from '../components/ui/Sheet'
@@ -11,8 +10,8 @@ import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { CAMPUS_LOCATIONS, CATEGORIES, categoryLabel, locationName } from '../lib/constants'
 import { MapPreview } from '../components/MapPreview'
-import { createReport, dismissMatch, getReport, getSecret, matchesForUser, updateReport } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
+import { uploadReportPhotos } from '../lib/storage'
 import { toLocalInputValue } from '../lib/time'
 
 const inputCls = 'h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 placeholder:text-slate-500 lg:h-11'
@@ -113,24 +112,19 @@ export default function ReportForm({ side }) {
   const [params] = useSearchParams()
   const nav = useNavigate()
   const toast = useToast()
-  useDbVersion()
-  const editing = id ? getReport(id) : null
-  const type = editing?.type ?? (side === 'temuan' ? 'found' : 'lost')
-  const isFound = type === 'found'
+  const [editing, setEditing] = useState(null) // baris laporan saat mode edit
+  const [loadingEdit, setLoadingEdit] = useState(!!id)
+  const [editNotFound, setEditNotFound] = useState(false)
+  const type = id ? editing?.type : side === 'temuan' ? 'found' : 'lost'
+  const resolvedType = type ?? (side === 'temuan' ? 'found' : 'lost')
+  const isFound = resolvedType === 'found'
 
-  const draftKey = `temutemu_draft_${type}`
-  const initial = useMemo(() => {
-    if (editing) {
-      return {
-        judul: editing.judul, kategori: editing.kategori, deskripsi: editing.deskripsi,
-        warna: editing.warna || '', merek: editing.merek || '', location_id: editing.location_id,
-        keterangan_lokasi: editing.keterangan_lokasi || '', waktu: toLocalInputValue(editing.waktu_kejadian),
-        lokasi_simpan: editing.lokasi_simpan || '', secret: user ? getSecret(editing.id, user.id) : '',
-      }
-    }
+  const draftKey = `temutemu_draft_${side === 'temuan' ? 'found' : 'lost'}`
+
+  const [v, setV] = useState(() => {
     try {
       const d = JSON.parse(localStorage.getItem(draftKey) || 'null')
-      if (d) return d
+      if (d && !id) return d
     } catch { /* abaikan */ }
     return {
       judul: params.get('judul') ?? '', kategori: params.get('kategori') || 'lainnya',
@@ -138,35 +132,83 @@ export default function ReportForm({ side }) {
       location_id: params.get('lokasi') ?? '', keterangan_lokasi: '',
       waktu: toLocalInputValue(), lokasi_simpan: '', secret: '',
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const [v, setV] = useState(initial)
-  const [photos, setPhotos] = useState(() => {
-    if (!editing) return []
-    try {
-      const db = JSON.parse(localStorage.getItem('temutemu_db_v1'))
-      return (db.photos || []).filter((p) => p.report_id === id).sort((a, b) => a.urutan - b.urutan).map((p) => p.url)
-    } catch {
-      return []
-    }
   })
+  const [photos, setPhotos] = useState([])
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
   const [doneId, setDoneId] = useState(null)
   const firstErrRef = useRef(null)
 
-  // Draf tersimpan otomatis sampai terkirim
+  // Mode edit: muat laporan + foto + ciri khusus dari Supabase
   useEffect(() => {
-    if (editing || doneId) return
+    if (!id) return
+    let alive = true
+    ;(async () => {
+      const { data: row, error } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (!alive) return
+      if (error || !row) {
+        setEditNotFound(true)
+        setLoadingEdit(false)
+        return
+      }
+      setEditing(row)
+      setLoadingEdit(false)
+      if (user && row.user_id === user.id) {
+        setV((p) => ({
+          ...p,
+          judul: row.judul, kategori: row.kategori, deskripsi: row.deskripsi,
+          warna: row.warna || '', merek: row.merek || '', location_id: row.location_id,
+          keterangan_lokasi: row.keterangan_lokasi || '', waktu: toLocalInputValue(row.waktu_kejadian),
+          lokasi_simpan: row.lokasi_simpan || '',
+        }))
+        const [{ data: phs }, { data: sec }] = await Promise.all([
+          supabase.from('report_photos').select('url').eq('report_id', row.id).order('urutan'),
+          supabase.from('report_secrets').select('detail_rahasia').eq('report_id', row.id).maybeSingle(),
+        ])
+        if (!alive) return
+        setPhotos((phs || []).map((p) => p.url))
+        setV((p) => ({ ...p, secret: sec?.detail_rahasia || '' }))
+      }
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user?.id])
+
+  // Draf tersimpan otomatis sampai terkirim (hanya mode buat baru)
+  useEffect(() => {
+    if (id || doneId) return
     try {
       localStorage.setItem(draftKey, JSON.stringify(v))
     } catch { /* kuota penuh, abaikan */ }
-  }, [v, draftKey, editing, doneId])
+  }, [v, draftKey, id, doneId])
 
   useEffect(() => {
     if (Object.keys(errors).length > 0) firstErrRef.current?.scrollIntoView({ block: 'center' })
   }, [errors])
+
+  if (loadingEdit) {
+    return (
+      <Layout appBar={{ type: 'back', title: 'Edit laporan' }} bottomNav={false}>
+        <div className="space-y-3" aria-busy="true">
+          <div className="h-40 animate-pulse rounded-xl bg-slate-200" />
+          <div className="h-12 animate-pulse rounded-lg bg-slate-200" />
+          <div className="h-24 animate-pulse rounded-xl bg-slate-200" />
+        </div>
+      </Layout>
+    )
+  }
+
+  if (editNotFound) {
+    return (
+      <Layout appBar={{ type: 'back', title: 'Edit laporan' }} bottomNav={false}>
+        <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-700">Laporan tidak ditemukan.</p>
+      </Layout>
+    )
+  }
 
   if (editing && (!user || editing.user_id !== user.id)) {
     return (
@@ -178,17 +220,11 @@ export default function ReportForm({ side }) {
 
   // Layar berhasil
   if (doneId) {
-    const ms = user ? matchesForUser(user.id).filter((m) => (m.lost_report_id === doneId || m.found_report_id === doneId) && m.status === 'baru') : []
     return (
       <Layout appBar={{ type: 'back', title: isFound ? 'Lapor penemuan' : 'Lapor kehilangan' }} bottomNav={false}>
         <div className="mx-auto max-w-md space-y-4 text-center">
           <CheckCircle2 size={64} aria-hidden="true" className="mx-auto text-green-700" />
           <h1 className="text-[22px] font-bold">Laporan terkirim</h1>
-          {ms.length > 0 && (
-            <div className="text-left">
-              <MatchCard reportId={doneId} items={ms} onDismiss={(mid) => dismissMatch(mid, user.id)} />
-            </div>
-          )}
           <div className="grid gap-2">
             <Button onClick={() => nav(`/laporan/${doneId}`)} size="lg">Lihat laporanku</Button>
             <Button variant="ghost" onClick={() => nav(isFound ? '/buat/temuan' : '/buat/hilang')}>Buat laporan lain</Button>
@@ -203,9 +239,10 @@ export default function ReportForm({ side }) {
     setErrors((p) => ({ ...p, [k]: undefined }))
   }
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     const er = {}
+    if (!user) er.form = 'Kamu harus masuk dulu untuk membuat laporan.'
     if (v.judul.trim().length < 5) er.judul = 'Tulis judul minimal 5 karakter.'
     if (v.deskripsi.trim().length < 10) er.deskripsi = 'Tulis deskripsi minimal 10 karakter.'
     if (!v.location_id) er.location_id = 'Pilih area kampus dari daftar.'
@@ -217,21 +254,52 @@ export default function ReportForm({ side }) {
     setBusy(true)
     try {
       const payload = {
-        user_id: user.id, type, judul: v.judul.trim(), kategori: v.kategori,
+        user_id: user.id, type: resolvedType, judul: v.judul.trim(), kategori: v.kategori,
         deskripsi: v.deskripsi.trim(), warna: v.warna.trim(), merek: v.merek.trim(),
         location_id: v.location_id, keterangan_lokasi: v.keterangan_lokasi.trim(),
         latitude: v.latitude || '', longitude: v.longitude || '',
         waktu_kejadian: new Date(v.waktu).toISOString(), lokasi_simpan: v.lokasi_simpan.trim(),
       }
+      let reportId = id
       if (editing) {
-        updateReport(id, user.id, payload, photos, v.secret.trim())
-        localStorage.removeItem(draftKey)
+        const { error } = await supabase
+          .from('reports')
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq('id', id)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase
+          .from('reports')
+          .insert(payload)
+          .select('id')
+          .single()
+        if (error) throw error
+        reportId = data.id
+      }
+
+      // Ciri khusus (hanya laporan penemuan)
+      if (resolvedType === 'found') {
+        await supabase
+          .from('report_secrets')
+          .upsert({ report_id: reportId, detail_rahasia: v.secret.trim() }, { onConflict: 'report_id' })
+      }
+
+      // Upload foto ke Storage lalu simpan public URL-nya
+      const urls = await uploadReportPhotos(user.id, reportId, photos)
+      await supabase.from('report_photos').delete().eq('report_id', reportId)
+      if (urls.length > 0) {
+        const { error: photoErr } = await supabase
+          .from('report_photos')
+          .insert(urls.map((url, i) => ({ report_id: reportId, url, urutan: i })))
+        if (photoErr) throw photoErr
+      }
+
+      localStorage.removeItem(draftKey)
+      if (editing) {
         toast.success('Perubahan tersimpan.')
         nav(`/laporan/${id}`)
       } else {
-        const saved = createReport(payload, photos, v.secret.trim())
-        localStorage.removeItem(draftKey)
-        setDoneId(saved.id)
+        setDoneId(reportId)
       }
     } catch (ex) {
       setErrors({ form: ex.message })

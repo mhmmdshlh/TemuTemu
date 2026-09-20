@@ -7,7 +7,7 @@ import Button from '../components/ui/Button'
 import Sheet, { ConfirmDialog } from '../components/ui/Sheet'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
-import { deleteUser, findUserByEmail, findUserByWA } from '../lib/mockDb'
+import supabase from '../lib/supabaseClient'
 import { PASSWORD_MIN_LENGTH, isValidEmail, normalizeWhatsapp } from '../lib/validation'
 import { formatWhatsapp } from '../lib/time'
 import { fakultasLabel, statusLabel } from '../lib/constants'
@@ -44,7 +44,7 @@ export default function Profile() {
     r.readAsDataURL(f)
   }
 
-  const save = (e) => {
+  const save = async (e) => {
     e?.preventDefault()
     setErr('')
     if (nama.trim().length < 3) {
@@ -53,8 +53,10 @@ export default function Profile() {
     }
     setBusy(true)
     try {
-      saveProfile({ nama: nama.trim(), foto_profil: foto || null })
+      await saveProfile({ nama: nama.trim(), foto_profil: foto || null })
       toast.success('Perubahan tersimpan.')
+    } catch (ex) {
+      setErr(ex.message || 'Gagal menyimpan profil.')
     } finally {
       setBusy(false)
     }
@@ -82,67 +84,105 @@ export default function Profile() {
       if (change === 'wa') {
         const wa = normalizeWhatsapp(newVal)
         if (!wa) throw new Error('Format nomor WhatsApp tidak valid. Contoh: 0812…')
-        if (findUserByWA(wa)) throw new Error('Nomor sudah dipakai akun lain.')
+        // Cek WhatsApp sudah dipakai akun lain (bukan diri sendiri)
+        const { data: existing, error: waErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('whatsapp', wa)
+          .neq('id', user.id)
+          .maybeSingle()
+        if (waErr && waErr.code !== 'PGRST116') throw new Error('Gagal memeriksa nomor WhatsApp.')
+        if (existing) throw new Error('Nomor sudah dipakai akun lain.')
         await verifyPassword(pw)
-        saveProfile({ whatsapp: wa })
+        await saveProfile({ whatsapp: wa })
         toast.success('Nomor WhatsApp diperbarui.')
       } else if (change === 'email') {
         const email = newVal.trim()
-        if (email && !isValidEmail(email)) throw new Error('Tulis alamat email yang valid.')
-        if (email && findUserByEmail(email)) throw new Error('Email sudah dipakai akun lain.')
+        if (!email) throw new Error('Email wajib diisi.')
+        if (!isValidEmail(email)) throw new Error('Tulis alamat email yang valid.')
+        // Cek email sudah dipakai akun lain (bukan diri sendiri)
+        const { data: existing, error: emailErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', email)
+          .neq('id', user.id)
+          .maybeSingle()
+        if (emailErr && emailErr.code !== 'PGRST116') throw new Error('Gagal memeriksa email.')
+        if (existing) throw new Error('Email sudah dipakai akun lain.')
         await verifyPassword(pw)
-        saveProfile({ email: email || null })
-        toast.success(email ? 'Email diperbarui.' : 'Email dihapus.')
+        await saveProfile({ email })
+        toast.success('Email diperbarui.')
       } else {
         await changePassword(pwLama, pwBaru)
         toast.success('Password diperbarui.')
       }
       tutupChange()
     } catch (ex) {
-      setErr(ex.message)
+      setErr(ex.message || 'Gagal memperbarui.')
     } finally {
       setBusy(false)
     }
   }
 
   const form = (
-    <form onSubmit={save} className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Avatar nama={nama} foto={foto} size={96} />
-        <label className="inline-flex min-h-[44px] cursor-pointer items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold">
-          Ubah foto
-          <input type="file" accept="image/*" className="hidden" onChange={pickFoto} />
+    <form className="space-y-6">
+      <div className="flex items-end justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Avatar nama={user.nama} foto={user.foto_profil} size={56} />
+          <div>
+            <p className="text-sm text-slate-500">Foto profil</p>
+            <p className="font-medium text-slate-900">{user.nama}</p>
+          </div>
+        </div>
+        <label className="text-sm text-slate-600 underline">
+          <input type="file" accept="image/*" onChange={pickFoto} className="sr-only" aria-label="Ganti foto profil" />
+          Ganti
         </label>
       </div>
+
       <div>
-        <label htmlFor="nama" className="block text-sm font-medium">Nama lengkap</label>
-        <input id="nama" value={nama} onChange={(e) => setNama(e.target.value)} className={`${inputCls} mt-1`} />
+        <label className="block text-sm font-medium text-slate-900">Nama lengkap</label>
+        <input value={nama} onChange={(e) => setNama(e.target.value)} className={inputCls} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <p className="text-sm font-medium">Nomor WhatsApp</p>
-          <p className="mt-1 text-sm">{formatWhatsapp(user.whatsapp)}</p>
-          <button type="button" onClick={() => openChange('wa')} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">Ubah</button>
+
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-slate-600">Nomor WhatsApp</span>
+          <Button variant="secondary" size="sm" onClick={() => openChange('wa')}>Ubah</Button>
         </div>
-        <div>
-          <p className="text-sm font-medium">Email</p>
-          <p className="mt-1 break-all text-sm">{user.email || <span className="text-slate-500">Belum diisi</span>}</p>
-          <button type="button" onClick={() => openChange('email')} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">{user.email ? 'Ubah' : 'Tambah'}</button>
-        </div>
-        <div>
-          <p className="text-sm font-medium">Status</p>
-          <p className="mt-1 text-sm">
-            {user.status ? statusLabel(user.status) : <span className="text-slate-500">Belum diisi</span>}
-            {user.status === 'mahasiswa' && user.fakultas && ` · ${fakultasLabel(user.fakultas)}`}
-          </p>
-        </div>
+        <p className="text-sm text-slate-900">{user.whatsapp ? formatWhatsapp(user.whatsapp) : '— belum diisi —'}</p>
       </div>
-      <div>
-        <p className="text-sm font-medium">Password</p>
-        <p className="mt-1 text-sm text-slate-500">••••••••</p>
-        <button type="button" onClick={() => openChange('sandi')} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">Ubah password</button>
+
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-slate-600">Email</span>
+          <Button variant="secondary" size="sm" onClick={() => openChange('email')}>Ubah</Button>
+        </div>
+        <p className="text-sm text-slate-900">{user.email || '— belum diisi —'}</p>
       </div>
-      {err && !change && <p className="flex items-center gap-1 text-sm text-red-700" role="alert"><AlertCircle size={14} aria-hidden="true" /> {err}</p>}
+
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-slate-600">Password</span>
+          <Button variant="secondary" size="sm" onClick={() => openChange('sandi')}>Ubah</Button>
+        </div>
+        <p className="text-sm text-slate-500">•••••••• (disembunyikan)</p>
+      </div>
+
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-slate-600">Status</span>
+          <span className="text-sm text-slate-900">{statusLabel(user.status) || '— belum diisi —'}</span>
+        </div>
+        {user.status === 'mahasiswa' && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-600">Fakultas</span>
+            <span className="text-sm text-slate-900">{fakultasLabel(user.fakultas) || '— belum diisi —'}</span>
+          </div>
+        )}
+      </div>
+
+      {err && <p className="flex items-center gap-1 text-sm text-red-700" role="alert"><AlertCircle size={14} aria-hidden="true" /> {err}</p>}
       <div className="hidden lg:block"><Button type="submit" loading={busy}>Simpan perubahan</Button></div>
     </form>
   )
@@ -160,7 +200,9 @@ export default function Profile() {
         <div className="mt-6 rounded-xl bg-slate-50 p-4">
           <h2 className="font-semibold text-red-700">Hapus akun</h2>
           <p className="mt-1 text-sm text-slate-600">Laporan, komentar, dan foto buktimu akan ikut dihapus atau dianonimkan.</p>
-          <Button variant="secondary" size="sm" className="mt-2 !text-red-700" onClick={() => setConfirmDel(true)}>Hapus akun</Button>
+          <Button variant="secondary" size="sm" className="mt-2 !text-red-700" onClick={() => setConfirmDel(true)}>
+            Hapus akun
+          </Button>
         </div>
       </div>
 
@@ -187,7 +229,7 @@ export default function Profile() {
               <p className="text-xs text-slate-500">
                 {change === 'wa'
                   ? `Masukkan password untuk mengganti nomor ${formatWhatsapp(user.whatsapp)}.`
-                  : 'Masukkan password untuk mengganti email kontak. Boleh dikosongkan untuk menghapus email.'}
+                  : 'Masukkan password untuk mengganti email kontak.'}
               </p>
             </>
           )}
@@ -205,7 +247,17 @@ export default function Profile() {
         title="Hapus akun ini?"
         desc="Akun, laporan, komentar, dan foto buktimu ikut dihapus atau dianonimkan."
         confirmLabel="Hapus akun"
-        onConfirm={async () => { deleteUser(user.id); logout(); nav('/') }}
+        onConfirm={async () => {
+          try {
+            // Hapus profil dari tabel users (auth.users akan dihapus otomatis via cascade)
+            await supabase.from('users').delete().eq('id', user.id)
+            await logout()
+            nav('/')
+            toast.success('Akun Anda telah dihapus.')
+          } catch (ex) {
+            toast.error('Gagal menghapus akun: ' + (ex.message || 'Coba lagi nanti.'))
+          }
+        }}
       />
     </Layout>
   )

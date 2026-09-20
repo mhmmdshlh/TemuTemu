@@ -1,13 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronDown, ClipboardList, Handshake, ScanSearch } from 'lucide-react'
 import Layout from '../components/Layout'
 import ReportCard from '../components/ReportCard'
 import { SearchBar } from '../components/SearchFilter'
-import { EmptyState } from '../components/ui/Feedback'
+import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
 import { useAuth } from '../contexts/AuthContext'
-import { listReports } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
 
 const FAQ_ITEMS = [
   {
@@ -52,9 +51,42 @@ const FAQ_ITEMS = [
   },
 ]
 
+/** Preview 6 laporan terbaru per jenis, langsung dari Supabase. Kosong ya kosong. */
 function Preview({ type, title, more }) {
-  useDbVersion()
-  const items = listReports({ type, perPage: 6 }).items
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      const { data } = await supabase
+        .from('public_reports')
+        .select('*')
+        .eq('type', type)
+        .order('created_at', { ascending: false })
+        .limit(6)
+      const rows = data || []
+      if (rows.length > 0) {
+        const { data: photos } = await supabase
+          .from('report_photos')
+          .select('report_id, url')
+          .in('report_id', rows.map((r) => r.id))
+          .order('urutan')
+        const byId = {}
+        ;(photos || []).forEach((p) => {
+          ;(byId[p.report_id] ??= []).push({ url: p.url })
+        })
+        rows.forEach((r) => { r.photos = byId[r.id] || [] })
+      }
+      if (alive) {
+        setItems(rows)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => { alive = false }
+  }, [type])
+
   return (
     <section aria-label={title} className="mt-6">
       <div className="flex items-center justify-between">
@@ -63,7 +95,9 @@ function Preview({ type, title, more }) {
           Lihat semua
         </Link>
       </div>
-      {items.length === 0 ? (
+      {loading ? (
+        <div className="mt-3"><ListSkeleton /></div>
+      ) : items.length === 0 ? (
         <p className="mt-2 text-sm text-slate-500">Belum ada laporan.</p>
       ) : (
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

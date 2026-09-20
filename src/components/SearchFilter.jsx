@@ -132,7 +132,7 @@ export function MobileFilterBar({ f, set }) {
 }
 
 /** Desktop: sidebar 280px sticky + dropdown urutan. */
-export function DesktopSidebar({ f, set, jenis, setJenis, counts }) {
+export function DesktopSidebar({ f, set, jenis, setJenis, counts, loading = false }) {
   const group = (title, children) => (
     <fieldset className="border-t border-slate-200 pt-3">
       <legend className="px-1 text-sm font-semibold">{title}</legend>
@@ -145,10 +145,10 @@ export function DesktopSidebar({ f, set, jenis, setJenis, counts }) {
       {label}
     </label>
   )
-  const radioJenis = (val, label, n) => (
+    const radioJenis = (val, label, n) => (
     <label key={val} className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
       <input type="radio" name="jenis" checked={jenis === val} onChange={() => setJenis(val)} className="h-4 w-4 accent-slate-900" />
-      {label}{typeof n === 'number' ? `(${n})` : ''}
+      {label}{typeof n === 'number' && !loading ? `(${n})` : ''}
     </label>
   )
   const dirty = f.kategori || f.lokasi || f.status || f.dari || f.sampai

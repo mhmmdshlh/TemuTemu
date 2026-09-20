@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Lock, MoreHorizontal, Share2 } from 'lucide-react'
 import Comments from '../components/Comments'
@@ -9,22 +9,11 @@ import PhotoGallery from '../components/PhotoGallery'
 import PhotoUploader from '../components/PhotoUploader'
 import Badge from '../components/ui/Badge'
 import Button from '../components/ui/Button'
-import { ConfirmDialog } from '../components/ui/Sheet'
+import { ListSkeleton } from '../components/ui/Feedback'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { categoryLabel, locationName } from '../lib/constants'
-import {
-  createClaim,
-  deleteReport,
-  dismissMatch,
-  flagReport,
-  getSecret,
-  listClaimsForReport,
-  matchesForUser,
-  publicReport,
-  setReportStatus,
-} from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
 import { formatDateTime, timeAgo } from '../lib/time'
 
 export default function ReportDetail() {
@@ -32,17 +21,81 @@ export default function ReportDetail() {
   const { user } = useAuth()
   const nav = useNavigate()
   const toast = useToast()
-  useDbVersion()
 
-  const r = publicReport(id)
-  const [claimOpen, setClaimOpen] = useState(false)
-  const [bukti, setBukti] = useState('')
-  const [buktiFotos, setBuktiFotos] = useState([])
-  const [claimErr, setClaimErr] = useState('')
-  const [confirm, setConfirm] = useState(null) // hapus | ditemukan | tutup
-  const [showSecret, setShowSecret] = useState(false)
+  const [r, setR] = useState(null)
+  const [photos, setPhotos] = useState([])
+  const [secret, setSecret] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      setLoading(true)
+      setNotFound(false)
+      const { data, error } = await supabase
+        .from('public_reports')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      if (!alive) return
+      if (error || !data) {
+        setR(null)
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+      setR(data)
+      const { data: ph } = await supabase
+        .from('report_photos')
+        .select('url')
+        .eq('report_id', id)
+        .order('urutan')
+      if (alive) setPhotos((ph || []).map((p) => p.url))
+      setLoading(false)
+    }
+    load()
+    return () => { alive = false }
+  }, [id])
 
-  if (!r) {
+  // Ciri khusus hanya diambil bila user adalah pemilik
+  useEffect(() => {
+    if (!r || !user || user.id !== r.user_id) { setSecret(''); return }
+    let alive = true
+    supabase.from('report_secrets').select('detail_rahasia').eq('report_id', id).maybeSingle()
+      .then(({ data }) => { if (alive) setSecret(data?.detail_rahasia || '') })
+    return () => { alive = false }
+  }, [r, user, id])
+
+  const [matches, setMatches] = useState([])
+  const [claims, setClaims] = useState([])
+  useEffect(() => {
+    if (!r || !user) { setMatches([]); setClaims([]); return }
+    let alive = true
+    const loadRel = async () => {
+      const { data: m } = await supabase.from('matches')
+        .select('*')
+        .or(`lost_report_id.eq.${id},found_report_id.eq.${id}`)
+        .neq('status', 'diabaikan')
+      const { data: c } = await supabase.from('claims')
+        .select('*, claimant:users!claims_claimant_id_fkey(nama)')
+        .eq('found_report_id', id)
+      if (!alive) return
+      setMatches(m || [])
+      setClaims((c || []).map((x) => ({ ...x, claimant: x.claimant || { nama: 'Pengklaim' } })))
+    }
+    loadRel()
+    return () => { alive = false }
+  }, [r, user, id])
+
+  if (loading) {
+    return (
+      <Layout appBar={{ type: 'back', title: 'Detail laporan' }} bottomNav={false}>
+        <ListSkeleton />
+      </Layout>
+    )
+  }
+
+  if (notFound || !r) {
     return (
       <Layout appBar={{ type: 'back', title: 'Detail laporan' }} bottomNav={false}>
         <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center">
@@ -55,12 +108,15 @@ export default function ReportDetail() {
   }
 
   const isOwner = user?.id === r.user_id
-  const secret = isOwner && user ? getSecret(id, user.id) : ''
-  const matches = user ? matchesForUser(user.id).filter((m) => (m.lost_report_id === id || m.found_report_id === id) && m.status !== 'diabaikan') : []
-  const claims = isOwner && r.type === 'found' ? listClaimsForReport(id) : []
+  const ownerName = r.owner_nama || 'Pengguna'
   const isFound = r.type === 'found'
   const closed = isFound ? r.status === 'kembali' : r.status === 'ditemukan'
   const ownerKind = isFound ? 'Penemu' : 'Pelapor'
+  const [claimOpen, setClaimOpen] = useState(false)
+  const [bukti, setBukti] = useState('')
+  const [buktiFotos, setBuktiFotos] = useState([])
+  const [claimErr, setClaimErr] = useState('')
+  const [showSecret, setShowSecret] = useState(false)
 
   const share = async () => {
     const url = `${window.location.origin}/laporan/${id}`
@@ -73,16 +129,46 @@ export default function ReportDetail() {
     } catch { /* dibatalkan */ }
   }
 
-  const ajukanKlaim = (e) => {
+  const ajukanKlaim = async (e) => {
     e.preventDefault()
     setClaimErr('')
     try {
-      const c = createClaim(id, user.id, bukti, buktiFotos)
+      if (!user) throw new Error('Masuk dulu untuk mengajukan klaim.')
+      if (bukti.trim().length < 20) throw new Error('Jelaskan bukti kepemilikanmu (minimal 20 karakter).')
+      const { data, error } = await supabase.from('claims').insert([{
+        found_report_id: id,
+        claimant_id: user.id,
+        deskripsi_bukti: bukti.trim(),
+      }]).select('id').single()
+      if (error) throw new Error(error.message)
+      // Foto bukti (base64/data-url) butuh Storage — untuk sekarang klaim tanpa foto dulu.
       toast.success('Klaim terkirim. Menunggu penemu meninjaunya.')
-      nav(`/klaim/${c.id}`)
+      nav(`/klaim/${data.id}`)
     } catch (ex) {
       setClaimErr(ex.message)
     }
+  }
+
+  const hapusLaporan = async () => {
+    const { error } = await supabase.from('reports').delete().eq('id', id)
+    if (error) { toast.error('Gagal menghapus: ' + error.message); return }
+    toast.success('Laporan dihapus.')
+    nav(isFound ? '/laporan?jenis=found' : '/laporan?jenis=lost')
+  }
+
+  const ubahStatus = async (status) => {
+    const { error } = await supabase.from('reports').update({ status }).eq('id', id)
+    if (error) { toast.error('Gagal: ' + error.message); return }
+    setR((p) => ({ ...p, status }))
+    toast.success(status === 'ditemukan' ? 'Laporan ditandai sudah ditemukan.' : 'Laporan ditutup.')
+  }
+
+  const laporkan = async () => {
+    if (!user) { toast.info('Masuk dulu untuk melaporkan.'); return }
+    const { error } = await supabase.from('reports').update({ hidden: true }).eq('id', id)
+    if (error) { toast.error('Gagal melaporkan: ' + error.message); return }
+    toast.success('Terima kasih. Laporan akan ditinjau.')
+    nav('/')
   }
 
   const sideTitle = isFound ? 'Detail penemuan' : 'Detail kehilangan'
@@ -100,17 +186,17 @@ export default function ReportDetail() {
           <>
             <Link to={`/edit/${r.id}`} className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Edit laporan</Link>
             {!isFound && r.status === 'aktif' && (
-              <button onClick={() => setConfirm('ditemukan')} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Tandai sudah ditemukan</button>
+              <button onClick={() => ubahStatus('ditemukan')} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Tandai sudah ditemukan</button>
             )}
             {isFound && r.status === 'aktif' && (
-              <button onClick={() => setConfirm('tutup')} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Tutup laporan</button>
+              <button onClick={() => ubahStatus('kembali')} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Tutup laporan</button>
             )}
-            <button onClick={() => setConfirm('hapus')} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Hapus laporan</button>
+            <button onClick={() => hapusLaporan()} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Hapus</button>
           </>
         ) : (
           user && (
             <button
-              onClick={() => { flagReport(id, user.id); toast.success('Laporan diteruskan. Disembunyikan otomatis setelah 3 laporan.') }}
+              onClick={laporkan}
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
             >
               Laporkan konten
@@ -216,14 +302,14 @@ export default function ReportDetail() {
 
       <div className="lg:grid lg:grid-cols-12 lg:gap-6">
         <div className="space-y-4 lg:col-span-7">
-          <PhotoGallery photos={r.photos} title={r.judul} kategori={r.kategori} />
+          <PhotoGallery photos={photos} judul={r.judul} />
           <div className="rounded-xl border border-slate-200 bg-white p-4 lg:hidden">
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge type={r.type} />
               <Badge status={r.status} />
             </div>
             <h1 className="mt-2 text-[22px] font-bold leading-[30px]">{r.judul}</h1>
-            <p className="mt-1 text-sm text-slate-500">Diposting {timeAgo(r.created_at)} oleh {r.owner?.nama}</p>
+            <p className="mt-1 text-sm text-slate-500">Diposting {timeAgo(r.created_at)} oleh {ownerName}</p>
             <div className="mt-3">{infoList}</div>
             <p className="mt-3 whitespace-pre-wrap text-slate-900">{r.deskripsi}</p>
             {secretBox}
@@ -250,7 +336,7 @@ export default function ReportDetail() {
               <Badge status={r.status} />
             </div>
             <h1 className="text-[28px] font-bold leading-9">{r.judul}</h1>
-            <p className="text-sm text-slate-500">Diposting {timeAgo(r.created_at)} oleh {r.owner?.nama}</p>
+            <p className="text-sm text-slate-500">Diposting {timeAgo(r.created_at)} oleh {ownerName}</p>
             {infoList}
             {secretBox}
             {isOwner && secret !== '' && (
@@ -289,32 +375,6 @@ export default function ReportDetail() {
         </section>
       )}
 
-      <ConfirmDialog
-        open={confirm === 'hapus'}
-        onClose={() => setConfirm(null)}
-        title="Hapus laporan ini?"
-        desc="Laporan dan komentarnya akan dihapus permanen."
-        confirmLabel="Hapus laporan"
-        onConfirm={async () => { deleteReport(id, user.id); toast.success('Laporan dihapus.'); nav(isFound ? '/laporan?jenis=found' : '/laporan?jenis=lost') }}
-      />
-      <ConfirmDialog
-        open={confirm === 'ditemukan'}
-        onClose={() => setConfirm(null)}
-        title="Tandai sudah ditemukan?"
-        desc="Laporanmu akan ditutup dan tidak menerima klaim baru."
-        confirmLabel="Tandai ditemukan"
-        danger={false}
-        onConfirm={async () => { setReportStatus(id, user.id, 'ditemukan'); toast.success('Laporan ditandai sudah ditemukan.') }}
-      />
-      <ConfirmDialog
-        open={confirm === 'tutup'}
-        onClose={() => setConfirm(null)}
-        title="Tutup laporan ini?"
-        desc="Laporan tidak lagi tampil sebagai aktif."
-        confirmLabel="Tutup laporan"
-        danger={false}
-        onConfirm={async () => { setReportStatus(id, user.id, 'kembali'); toast.success('Laporan ditutup.') }}
-      />
-    </Layout>
+      </Layout>
   )
 }

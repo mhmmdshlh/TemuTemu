@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PackageSearch } from 'lucide-react'
 import Layout from '../components/Layout'
@@ -7,94 +7,14 @@ import ReportCard from '../components/ReportCard'
 import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../components/SearchFilter'
 import Button from '../components/ui/Button'
 import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
-import { countReportsByType, listReports, matchesForUser } from '../lib/mockDb'
-import { useSnappedIndex } from '../lib/useSnap'
 import { useAuth } from '../contexts/AuthContext'
+import supabase from '../lib/supabaseClient'
 
 const PER_PAGE = 20
-
-/** Urutan panel pager mobile: Semua → Barang hilang → Ditemukan. */
-const JENIS_ORDER = ['semua', 'lost', 'found']
 
 /** 'semua' = barang hilang dan ditemukan sekaligus. */
 const JENIS_VALID = ['lost', 'found']
 const JUDUL = { semua: 'Laporan', lost: 'Barang hilang', found: 'Barang ditemukan' }
-
-/** Panel list untuk satu jenis — dipakai pager swipe di mobile. */
-function JenisPanel({ jenis, f, setFilter, active, loading, matchIds }) {
-  const moreRef = useRef(null)
-  const isSemua = jenis === 'semua'
-  const data = useMemo(
-    () => listReports({ ...f, type: isSemua ? null : jenis, perPage: f.limit }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jenis, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit],
-  )
-
-  // Muat otomatis saat mendekati akhir — hanya panel aktif yang menambah limit
-  // (tiga panel berada di posisi scroll vertikal yang sama; tanpa guard ini
-  // limit bisa naik 3× sekaligus).
-  useEffect(() => {
-    if (!active) return
-    const el = moreRef.current
-    if (!el || data.items.length >= data.total) return
-    const obs = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) setFilter((p) => ({ ...p, limit: p.limit + PER_PAGE }))
-      },
-      { rootMargin: '400px' },
-    )
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [active, data.items.length, data.total, setFilter])
-
-  const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
-  const buatTo = jenis === 'found' ? '/buat/temuan' : '/buat/hilang'
-  const buatLabel = jenis === 'found'
-    ? 'Buat laporan penemuan'
-    : jenis === 'lost' ? 'Buat laporan kehilangan' : 'Buat laporan'
-
-  return (
-    <div aria-label={JUDUL[jenis]}>
-      <div className="mt-3 grid gap-3">
-        {loading ? (
-          <div className="col-span-full"><ListSkeleton /></div>
-        ) : data.items.length === 0 ? (
-          <div className="col-span-full">
-            <EmptyState
-              icon={<PackageSearch size={40} aria-hidden="true" />}
-              title={filtered ? 'Tidak ada laporan yang cocok.' : 'Belum ada laporan'}
-              desc={filtered ? 'Coba ubah kata kunci atau reset filter.' : undefined}
-              action={
-                filtered ? (
-                  <span className="flex flex-wrap justify-center gap-2">
-                    <Button variant="secondary" onClick={() => setFilter({ q: '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })}>Reset filter</Button>
-                    <Link to={buatTo} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
-                      {buatLabel}
-                    </Link>
-                  </span>
-                ) : (
-                  <Link to={buatTo} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
-                    {buatLabel}
-                  </Link>
-                )
-              }
-            />
-          </div>
-        ) : (
-          data.items.map((r) => <ReportCard key={r.id} r={r} hasMatch={matchIds.has(r.id)} />)
-        )}
-      </div>
-
-      {!loading && data.items.length < data.total && (
-        <div ref={moreRef} className="mt-4 text-center">
-          <Button variant="secondary" onClick={() => setFilter((p) => ({ ...p, limit: p.limit + PER_PAGE }))}>
-            Muat lebih banyak ({data.items.length}/{data.total})
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function ReportList() {
   const { user } = useAuth()
@@ -102,13 +22,11 @@ export default function ReportList() {
   const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
   const [firstLoad, setFirstLoad] = useState(true)
   const moreRef = useRef(null)
-  const pagerRef = useRef(null)
 
   // Jenis laporan disimpan di URL supaya tautan lama (/hilang, /ditemukan) dan
   // tautan dari halaman lain tetap bisa membuka daftar dengan jenis tertentu.
   const jenisParam = params.get('jenis')
   const jenis = JENIS_VALID.includes(jenisParam) ? jenisParam : 'semua'
-  const indexOfJenis = JENIS_ORDER.indexOf(jenis)
   const setJenis = (next) => {
     const p = new URLSearchParams(params)
     if (next === 'semua') p.delete('jenis')
@@ -129,57 +47,128 @@ export default function ReportList() {
     const t = setTimeout(() => setFirstLoad(false), 250)
     return () => clearTimeout(t)
   }, [])
-  const loading = firstLoad
 
-  // Pager mobile: swipe mengubah jenis (via URL), jenis berubah → geser ke panel
-  // yang sesuai (klik tab, redirect /hilang, dsb).
-  const { scrollToIndex } = useSnappedIndex({
-    containerRef: pagerRef,
-    count: JENIS_ORDER.length,
-    initialIndex: indexOfJenis,
-    onIndexChange: (i) => setJenis(JENIS_ORDER[i]),
-  })
+  // Fetch data & counts dari Supabase
+  const [reportData, setReportData] = useState({ items: [], total: 0 })
+  const [counts, setCounts] = useState({ semua: 0, lost: 0, found: 0 })
+  const [countsLoading, setCountsLoading] = useState(true)
+  const [matchIds, setMatchIds] = useState(new Set())
+
+  const fetchReports = async () => {
+    try {
+      let query = supabase
+        .from('public_reports')
+        .select('*', { count: 'exact' })
+
+      // Filter jenis
+      if (jenis === 'lost' || jenis === 'found') {
+        query = query.eq('type', jenis)
+      }
+
+      // Filter pencarian
+      if (f.q) {
+        query = query.or(`judul.ilike.%${f.q}%,deskripsi.ilike.%${f.q}%,merek.ilike.%${f.q}%`)
+      }
+      if (f.kategori) query = query.eq('kategori', f.kategori)
+      if (f.lokasi) query = query.eq('location_id', f.lokasi)
+      if (f.dari) query = query.gte('waktu_kejadian', f.dari)
+      if (f.sampai) query = query.lte('waktu_kejadian', f.sampai)
+
+      // Sort
+      const ascending = f.sort === 'terlama'
+      query = query.order('created_at', { ascending })
+
+      // Pagination
+      const offset = (f.page - 1) * f.limit
+      query = query.range(offset, offset + f.limit - 1)
+
+      const { data, error, count } = await query
+      if (error) throw error
+      setReportData({ items: data || [], total: count || 0 })
+    } catch (err) {
+      console.error('Error fetching reports:', err)
+      setReportData({ items: [], total: 0 })
+    }
+  }
+
+  const fetchCounts = async () => {
+    setCountsLoading(true)
+    try {
+      const baseFilter = { q: f.q, kategori: f.kategori, lokasi: f.lokasi, dari: f.dari, sampai: f.sampai }
+      let allQ = supabase.from('public_reports').select('*', { count: 'exact', head: true })
+      let lostQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).eq('type', 'lost')
+      let foundQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).eq('type', 'found')
+
+      if (baseFilter.q) {
+        allQ = allQ.or(`judul.ilike.%${baseFilter.q}%,deskripsi.ilike.%${baseFilter.q}%`)
+        lostQ = lostQ.or(`judul.ilike.%${baseFilter.q}%,deskripsi.ilike.%${baseFilter.q}%`)
+        foundQ = foundQ.or(`judul.ilike.%${baseFilter.q}%,deskripsi.ilike.%${baseFilter.q}%`)
+      }
+      if (baseFilter.kategori) {
+        allQ = allQ.eq('kategori', baseFilter.kategori)
+        lostQ = lostQ.eq('kategori', baseFilter.kategori)
+        foundQ = foundQ.eq('kategori', baseFilter.kategori)
+      }
+      if (baseFilter.lokasi) {
+        allQ = allQ.eq('location_id', baseFilter.lokasi)
+        lostQ = lostQ.eq('location_id', baseFilter.lokasi)
+        foundQ = foundQ.eq('location_id', baseFilter.lokasi)
+      }
+      if (baseFilter.dari) {
+        allQ = allQ.gte('waktu_kejadian', baseFilter.dari)
+        lostQ = lostQ.gte('waktu_kejadian', baseFilter.dari)
+        foundQ = foundQ.gte('waktu_kejadian', baseFilter.dari)
+      }
+      if (baseFilter.sampai) {
+        allQ = allQ.lte('waktu_kejadian', baseFilter.sampai)
+        lostQ = lostQ.lte('waktu_kejadian', baseFilter.sampai)
+        foundQ = foundQ.lte('waktu_kejadian', baseFilter.sampai)
+      }
+
+      const [{ count: cAll }, { count: cLost }, { count: cFound }] = await Promise.all([allQ, lostQ, foundQ])
+      setCounts({ semua: cAll || 0, lost: cLost || 0, found: cFound || 0 })
+    } catch (err) {
+      console.error('Error counting reports:', err)
+      setCounts({ semua: 0, lost: 0, found: 0 })
+    } finally {
+      setCountsLoading(false)
+    }
+  }
+
+  const fetchMatches = async () => {
+    if (!user) {
+      setMatchIds(new Set())
+      return
+    }
+    try {
+      const { data: matches, error } = await supabase
+        .from('matches')
+        .select('lost_report_id, found_report_id')
+        .eq('status', 'baru')
+      if (error) return
+      const related = new Set()
+      matches.forEach((m) => {
+        if (m.lost_report_id) related.add(m.lost_report_id)
+        if (m.found_report_id) related.add(m.found_report_id)
+      })
+      setMatchIds(related)
+    } catch (err) {
+      console.error('Error fetching matches:', err)
+    }
+  }
 
   useEffect(() => {
-    scrollToIndex(indexOfJenis)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jenis])
+      if (firstLoad) return
+      const load = async () => {
+        await Promise.all([fetchReports(), fetchCounts(), fetchMatches()])
+      }
+      load()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [jenis, f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit, firstLoad, user?.id])
 
-  // List aktif — dipakai desktop (mobile memakai JenisPanel).
-  const data = useMemo(
-    () => listReports({ ...f, type: jenis === 'semua' ? null : jenis, perPage: f.limit }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jenis, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit],
-  )
+  const data = reportData
+  const filtered = f.q || f.kategori || f.lokasi || f.dari || f.sampai
 
-  // Jumlah laporan per jenis dengan filter yang sedang aktif → "Semua(12)" dsb.
-  const counts = useMemo(
-    () => countReportsByType({ q: f.q, kategori: f.kategori, lokasi: f.lokasi, status: f.status, dari: f.dari, sampai: f.sampai }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jenis, f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit],
-  )
-
-  const matchIds = useMemo(() => {
-    if (!user) return new Set()
-    const ms = matchesForUser(user.id).filter((m) => m.status === 'baru')
-    return new Set(ms.flatMap((m) => [m.lost_report_id, m.found_report_id]))
-  }, [user, f.status]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Muat otomatis saat mendekati akhir (desktop)
-  useEffect(() => {
-    const el = moreRef.current
-    if (!el || data.items.length >= data.total) return
-    const obs = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) setF((p) => ({ ...p, limit: p.limit + PER_PAGE }))
-      },
-      { rootMargin: '400px' },
-    )
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [data.items.length, data.total])
-
-  const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
   // Aksi buat laporan mengikuti jenis yang sedang dilihat.
   const buatTo = jenis === 'found' ? '/buat/temuan' : '/buat/hilang'
   const buatLabel = jenis === 'found'
@@ -190,13 +179,13 @@ export default function ReportList() {
 
   return (
     <Layout fabSide={jenis === 'semua' ? 'all' : jenis} wide>
-      <SegmentedControl jenis={jenis} onChange={setJenis} counts={counts} />
+      <SegmentedControl jenis={jenis} onChange={setJenis} counts={counts} loading={countsLoading} />
       <div className="mt-3 lg:mt-6 lg:flex lg:gap-6">
-        <DesktopSidebar f={f} set={set} jenis={jenis} setJenis={setJenis} counts={counts} />
+        <DesktopSidebar f={f} set={set} jenis={jenis} setJenis={setJenis} counts={counts} loading={countsLoading} />
         <div className="min-w-0 flex-1">
           <div className="lg:flex lg:items-center lg:justify-between">
             <h1 className="hidden text-[28px] font-bold leading-9 lg:block">
-              {JUDUL[jenis]} ({data.total})
+             {JUDUL[jenis]} ({data.total})
             </h1>
             <div className="flex items-center gap-2">
               <div className="flex-1 lg:w-[360px] lg:flex-none">
@@ -207,25 +196,8 @@ export default function ReportList() {
           </div>
           <div className="mt-2"><MobileFilterBar f={f} set={set} /></div>
 
-          {/* Mobile: pager scroll snap antar jenis (Semua | Hilang | Ditemukan) */}
-          <div
-            ref={pagerRef}
-            aria-label="Daftar laporan per jenis"
-            className="-mx-4 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain no-scrollbar md:-mx-6 lg:hidden"
-          >
-            {JENIS_ORDER.map((j) => (
-              <div
-                key={j}
-                className="w-full shrink-0 snap-start px-4 md:px-6"
-              >
-                <JenisPanel jenis={j} f={f} setFilter={set} active={jenis === j} loading={loading} matchIds={matchIds} />
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: grid list aktif */}
-          <div className="mt-3 hidden grid gap-3 lg:mt-4 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
-            {loading ? (
+          <div className="mt-3 grid gap-3 lg:mt-4 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
+            {firstLoad ? (
               <div className="col-span-full"><ListSkeleton /></div>
             ) : data.items.length === 0 ? (
               <div className="col-span-full">
@@ -254,8 +226,8 @@ export default function ReportList() {
             )}
           </div>
 
-          {!loading && data.items.length < data.total && (
-            <div ref={moreRef} className="mt-4 hidden text-center lg:block">
+          {!firstLoad && data.items.length < data.total && (
+            <div ref={moreRef} className="mt-4 text-center">
               <Button variant="secondary" onClick={() => setF((p) => ({ ...p, limit: p.limit + PER_PAGE }))}>
                 Muat lebih banyak ({data.items.length}/{data.total})
               </Button>
