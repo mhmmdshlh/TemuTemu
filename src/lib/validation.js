@@ -17,6 +17,14 @@ export function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim())
 }
 
+export const PASSWORD_MIN_LENGTH = 8
+
+/** Password minimal 8 karakter serta berisi huruf dan angka (FR-AUTH-05). */
+export function isValidPassword(password) {
+  const s = String(password || '')
+  return s.length >= PASSWORD_MIN_LENGTH && /[A-Za-z]/.test(s) && /\d/.test(s)
+}
+
 /** Sensor komentar: no telepon, email, tautan — FR-CMT-05 */
 export function sanitizeComment(text) {
   if (!text) return ''

@@ -12,11 +12,15 @@ create table if not exists campus_locations (
 );
 
 -- Profil user (1:1 dengan auth.users)
+-- Login memakai nomor WhatsApp + password; hashing password ditangani Supabase Auth
+-- (auth.users), bukan tabel ini. Email bersifat opsional sebagai kontak tambahan.
 create table if not exists users (
   id uuid primary key references auth.users(id) on delete cascade,
   nama text not null,
   whatsapp text unique not null,
-  email text unique not null,
+  email text unique,
+  status text check (status in ('mahasiswa','dosen','staff','satpam','warga-biasa')),
+  fakultas text, -- hanya terisi bila status = mahasiswa
   foto_profil text,
   created_at timestamptz default now()
 );

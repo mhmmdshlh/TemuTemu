@@ -38,7 +38,7 @@ export default function Landing() {
 
   const go = (e) => {
     e?.preventDefault()
-    nav(q.trim() ? `/hilang?q=${encodeURIComponent(q.trim())}` : '/hilang')
+    nav(q.trim() ? `/laporan?q=${encodeURIComponent(q.trim())}` : '/laporan')
   }
 
   const cta = (to) =>
@@ -83,8 +83,8 @@ export default function Landing() {
       </form>
 
       <div className="space-y-2">
-        <Preview type="lost" title="Barang hilang terbaru" more="/hilang" />
-        <Preview type="found" title="Barang ditemukan terbaru" more="/ditemukan" />
+        <Preview type="lost" title="Barang hilang terbaru" more="/laporan?jenis=lost" />
+        <Preview type="found" title="Barang ditemukan terbaru" more="/laporan?jenis=found" />
       </div>
 
       {/* Cara kerja */}

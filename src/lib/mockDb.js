@@ -5,7 +5,7 @@
 import { matchScore } from './matchScore'
 import { MATCH_THRESHOLD_DEFAULT } from './constants'
 
-const KEY = 'temutemu_db_v1'
+const KEY = 'temutemu_db_v2'
 const listeners = new Set()
 
 function uid(prefix = 'id') {
@@ -23,7 +23,7 @@ function blankDb() {
     claims: [],
     claimPhotos: [], // { id, claim_id, jenis: bukti|serah_terima, url, created_at }
     notifications: [],
-    otp: {}, // wa -> { code, expiresAt, attempts, lockedUntil, requests: [] }
+    authAttempts: {}, // wa -> { attempts, lockedUntil } — proteksi brute force login
     flags: [], // { report_id, user_id, created_at }
     config: { match_threshold: MATCH_THRESHOLD_DEFAULT },
   }
@@ -82,19 +82,31 @@ export function findUserByWA(wa) {
   return loadDb().users.find((u) => u.whatsapp === wa) || null
 }
 export function findUserByEmail(email) {
-  const e = String(email || '').toLowerCase()
-  return loadDb().users.find((u) => u.email.toLowerCase() === e) || null
+  const e = String(email || '').trim().toLowerCase()
+  if (!e) return null
+  return loadDb().users.find((u) => u.email && u.email.toLowerCase() === e) || null
 }
 export function findUserById(id) {
   return loadDb().users.find((u) => u.id === id) || null
 }
-export function createUser({ nama, whatsapp, email, foto_profil = null }) {
+export function createUser({
+  nama,
+  whatsapp,
+  email = null,
+  password_hash,
+  status = null, // mahasiswa | dosen | staff | satpam | warga-biasa
+  fakultas = null, // hanya untuk status mahasiswa
+  foto_profil = null,
+}) {
   const db = loadDb()
   const user = {
     id: uid('usr'),
     nama,
     whatsapp,
-    email,
+    email: email || null, // opsional — login memakai nomor WhatsApp
+    password_hash, // 'sha256:<iterasi>:<salt>:<hash>' — lihat lib/password.js
+    status,
+    fakultas: status === 'mahasiswa' ? fakultas || null : null,
     foto_profil,
     created_at: new Date().toISOString(),
   }
@@ -107,6 +119,15 @@ export function updateUser(id, patch) {
   const u = db.users.find((x) => x.id === id)
   if (!u) return null
   Object.assign(u, patch)
+  saveDb(db)
+  return u
+}
+/** Ganti hash password user (dipakai saat daftar & ubah password). */
+export function setUserPassword(id, passwordHash) {
+  const db = loadDb()
+  const u = db.users.find((x) => x.id === id)
+  if (!u) return null
+  u.password_hash = passwordHash
   saveDb(db)
   return u
 }
@@ -125,50 +146,40 @@ export function deleteUser(id) {
   saveDb(db)
 }
 
-// ---------- OTP mock (FR-AUTH-02..04) ----------
-export function requestOtp(whatsapp) {
-  const db = loadDb()
-  const now = Date.now()
-  const rec = db.otp[whatsapp] || { requests: [], attempts: 0 }
-  rec.requests = (rec.requests || []).filter((t) => now - t < 15 * 60 * 1000)
-  if (rec.lockedUntil && now < rec.lockedUntil) {
-    throw new Error('Terlalu banyak percobaan salah. Coba lagi nanti.')
-  }
-  if (rec.requests.length >= 3) {
-    throw new Error('Batas kirim OTP tercapai (3x per 15 menit). Coba lagi nanti.')
-  }
-  const code = String(Math.floor(100000 + Math.random() * 900000))
-  db.otp[whatsapp] = {
-    code,
-    expiresAt: now + 5 * 60 * 1000,
-    attempts: 0,
-    lockedUntil: 0,
-    requests: [...rec.requests, now],
-    used: false,
-  }
-  saveDb(db)
-  // Di produksi dikirim via WA; di mock dikembalikan untuk ditampilkan di UI dev.
-  return code
+// ---------- proteksi brute force login (pengganti lockout OTP) ----------
+const MAX_LOGIN_ATTEMPTS = 5
+const LOGIN_LOCK_MS = 15 * 60 * 1000
+
+/** Sisa waktu kunci (ms) untuk sebuah nomor. 0 berarti tidak terkunci. */
+export function loginLockRemaining(whatsapp) {
+  const rec = loadDb().authAttempts?.[whatsapp]
+  if (!rec?.lockedUntil) return 0
+  const sisa = rec.lockedUntil - Date.now()
+  return sisa > 0 ? sisa : 0
 }
 
-export function verifyOtp(whatsapp, code) {
+/** Catat percobaan login gagal; kunci 15 menit setelah 5 kali. */
+export function recordLoginFailure(whatsapp) {
   const db = loadDb()
-  const rec = db.otp[whatsapp]
-  const now = Date.now()
-  if (!rec) throw new Error('Belum ada OTP untuk nomor ini. Minta kode dulu.')
-  if (rec.used) throw new Error('Kode sudah dipakai. Minta kode baru.')
-  if (now > rec.expiresAt) throw new Error('Kode kedaluwarsa (5 menit). Minta kode baru.')
-  if (rec.lockedUntil && now < rec.lockedUntil)
-    throw new Error('Terkunci sementara karena terlalu banyak salah. Coba lagi nanti.')
-  if (String(code).trim() !== rec.code) {
-    rec.attempts = (rec.attempts || 0) + 1
-    if (rec.attempts >= 5) rec.lockedUntil = now + 15 * 60 * 1000
-    saveDb(db)
-    throw new Error(`Kode salah (${rec.attempts}/5).`)
+  db.authAttempts = db.authAttempts || {}
+  const rec = db.authAttempts[whatsapp] || { attempts: 0, lockedUntil: 0 }
+  rec.attempts += 1
+  if (rec.attempts >= MAX_LOGIN_ATTEMPTS) {
+    rec.lockedUntil = Date.now() + LOGIN_LOCK_MS
+    rec.attempts = 0
   }
-  rec.used = true
+  db.authAttempts[whatsapp] = rec
   saveDb(db)
-  return true
+  return rec
+}
+
+/** Bersihkan penghitung gagal setelah login berhasil. */
+export function clearLoginFailures(whatsapp) {
+  const db = loadDb()
+  if (db.authAttempts?.[whatsapp]) {
+    delete db.authAttempts[whatsapp]
+    saveDb(db)
+  }
 }
 
 // ---------- reports ----------
@@ -277,9 +288,13 @@ export function getSecret(reportId, requesterId) {
   return db.secrets.find((s) => s.report_id === reportId)?.detail_rahasia || ''
 }
 
-export function listReports({ type, q = '', kategori = '', lokasi = '', status = '', dari = '', sampai = '', page = 1, perPage = 20, mine = null, sort = 'terbaru' } = {}) {
-  const db = loadDb()
-  let arr = db.reports.filter((r) => r.type === type)
+/**
+ * Filter inti laporan (tanpa urut & paginasi) — dipakai listReports dan
+ * countReportsByType supaya aturan filter tidak ditulis dua kali.
+ */
+function filterReports(db, { type = null, q = '', kategori = '', lokasi = '', status = '', dari = '', sampai = '', mine = null } = {}) {
+  // type kosong/null = semua jenis — dipakai daftar laporan gabungan (/laporan).
+  let arr = type ? db.reports.filter((r) => r.type === type) : db.reports.slice()
   if (mine) arr = arr.filter((r) => r.user_id === mine)
   else arr = arr.filter((r) => !r.hidden)
   if (kategori) arr = arr.filter((r) => r.kategori === kategori)
@@ -296,6 +311,12 @@ export function listReports({ type, q = '', kategori = '', lokasi = '', status =
       return words.every((w) => hay.includes(w) || hay.split(/\s+/).some((h) => lev(h, w) <= 2))
     })
   }
+  return arr
+}
+
+export function listReports({ page = 1, perPage = 20, sort = 'terbaru', ...opts } = {}) {
+  const db = loadDb()
+  const arr = filterReports(db, opts)
   arr.sort((a, b) => (sort === 'terlama' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at)))
   const total = arr.length
   const items = arr.slice((page - 1) * perPage, page * perPage).map((r) => {
@@ -307,6 +328,16 @@ export function listReports({ type, q = '', kategori = '', lokasi = '', status =
     }
   })
   return { items, total, pages: Math.max(1, Math.ceil(total / perPage)) }
+}
+
+/** Jumlah laporan per jenis dengan filter yang sedang aktif (label penghitung). */
+export function countReportsByType(opts = {}) {
+  const db = loadDb()
+  return {
+    semua: filterReports(db, { ...opts, type: null }).length,
+    lost: filterReports(db, { ...opts, type: 'lost' }).length,
+    found: filterReports(db, { ...opts, type: 'found' }).length,
+  }
 }
 
 function lev(a, b) {

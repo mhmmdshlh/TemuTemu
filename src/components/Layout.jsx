@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Bell, ChevronDown, Home, PackageCheck, Plus, Search, User } from 'lucide-react'
+import { Bell, ChevronDown, Home, PackageSearch, Plus, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { listNotifications, unreadCount } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
@@ -9,16 +9,15 @@ import Button from './ui/Button'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Beranda', Icon: Home, end: true },
-  { to: '/hilang', label: 'Hilang', Icon: Search },
-  { to: '/ditemukan', label: 'Ditemukan', Icon: PackageCheck },
-  { to: '/saya', label: 'Saya', Icon: User },
+  { to: '/laporan', label: 'Laporan', Icon: PackageSearch },
+  { to: '/saya', label: 'Aktivitas', Icon: User },
 ]
 
 function BottomNav() {
   const { user } = useAuth()
   return (
     <nav aria-label="Navigasi utama" className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
-      <div className="grid h-16 grid-cols-4">
+      <div className="grid h-16 grid-cols-3">
         {NAV_ITEMS.map(({ to, label, Icon, end }) => (
           <NavLink
             key={to}
@@ -85,32 +84,14 @@ function BellButton() {
   )
 }
 
-function AvatarMenu() {
-  const { user, logout } = useAuth()
-  const nav = useNavigate()
-  const [open, setOpen] = useState(false)
+/** Avatar di kanan atas: langsung ke halaman Profil (tanpa menu dropdown). */
+function ProfileLink() {
+  const { user } = useAuth()
   if (!user) return null
   return (
-    <div className="relative hidden lg:block">
-      <button onClick={() => setOpen((o) => !o)} aria-label="Menu akun" aria-expanded={open} className="rounded-full">
-        <Avatar nama={user.nama} foto={user.foto_profil} size={36} />
-      </button>
-      {open && (
-        <>
-          <button aria-label="Tutup menu" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-popover">
-            <Link to="/saya" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Aktivitas saya</Link>
-            <Link to="/profil" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Profil</Link>
-            <button
-              onClick={() => { logout(); setOpen(false); nav('/') }}
-              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
-            >
-              Keluar
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+    <Link to="/profil" aria-label="Profil saya" className="rounded-full">
+      <Avatar nama={user.nama} foto={user.foto_profil} size={36} />
+    </Link>
   )
 }
 
@@ -138,7 +119,8 @@ function CreateMenu() {
   )
 }
 
-/** FAB kontekstual: hanya di /hilang & /ditemukan (mobile). Mengecil saat scroll bawah. */
+/** FAB kontekstual di /laporan (mobile). Mengecil saat scroll bawah.
+ *  side: 'lost' | 'found' | 'all' (jenis = semua). */
 function Fab({ side }) {
   const [mini, setMini] = useState(false)
   useEffect(() => {
@@ -152,15 +134,19 @@ function Fab({ side }) {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
   if (!side) return null
+  const isAll = side === 'all'
   const isLost = side === 'lost'
+  const to = isLost || isAll ? '/buat/hilang' : '/buat/temuan'
+  const label = isAll ? 'Buat laporan' : isLost ? 'Lapor kehilangan' : 'Lapor penemuan'
+  const warna = isLost ? 'bg-hilang-700' : isAll ? 'bg-slate-900' : 'bg-temuan-700'
   return (
     <Link
-      to={isLost ? '/buat/hilang' : '/buat/temuan'}
-      aria-label={isLost ? 'Lapor kehilangan' : 'Lapor penemuan'}
-      className={`fixed bottom-20 right-4 z-30 inline-flex h-12 items-center gap-1.5 rounded-full px-4 font-semibold text-white shadow-popover transition duration-150 ease-out lg:hidden ${isLost ? 'bg-hilang-700' : 'bg-temuan-700'}`}
+      to={to}
+      aria-label={label}
+      className={`fixed bottom-20 right-4 z-30 inline-flex h-12 items-center gap-1.5 rounded-full px-4 font-semibold text-white shadow-popover transition duration-150 ease-out lg:hidden ${warna}`}
     >
       <Plus size={20} aria-hidden="true" />
-      {!mini && <span className="text-sm">{isLost ? 'Lapor kehilangan' : 'Lapor penemuan'}</span>}
+      {!mini && <span className="text-sm">{label}</span>}
     </Link>
   )
 }
@@ -184,8 +170,8 @@ export default function Layout({
 
   const desktopLinks = [
     { to: '/', label: 'Beranda', end: true },
-    { to: '/hilang', label: 'Barang hilang' },
-    { to: '/ditemukan', label: 'Barang ditemukan' },
+    { to: '/laporan', label: 'Laporan' },
+    { to: user ? '/saya' : '/masuk', label: 'Aktivitas saya' },
   ]
 
   return (
@@ -212,7 +198,7 @@ export default function Layout({
                 {user ? (
                   <>
                     <BellButton />
-                    <Link to="/saya" aria-label="Akun saya"><Avatar nama={user.nama} foto={user.foto_profil} size={36} /></Link>
+                    <ProfileLink />
                   </>
                 ) : (
                   loc.pathname !== '/masuk' && <Link to="/masuk" className="inline-flex h-10 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold hover:bg-slate-50">Masuk</Link>
@@ -248,7 +234,7 @@ export default function Layout({
               <>
                 <CreateMenu />
                 <BellButton />
-                <AvatarMenu />
+                <ProfileLink />
               </>
             ) : (
               <Link to="/masuk" className="inline-flex h-10 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">Masuk</Link>

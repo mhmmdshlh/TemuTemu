@@ -7,25 +7,32 @@ import Button from '../components/ui/Button'
 import Sheet, { ConfirmDialog } from '../components/ui/Sheet'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
-import { deleteUser, findUserByEmail, findUserByWA, verifyOtp } from '../lib/mockDb'
-import { isValidEmail } from '../lib/validation'
-import { formatWhatsapp, maskWhatsapp } from '../lib/time'
+import { deleteUser, findUserByEmail, findUserByWA } from '../lib/mockDb'
+import { PASSWORD_MIN_LENGTH, isValidEmail, normalizeWhatsapp } from '../lib/validation'
+import { formatWhatsapp } from '../lib/time'
+import { fakultasLabel, statusLabel } from '../lib/constants'
 
 const inputCls = 'h-12 w-full rounded-lg border border-slate-300 bg-white px-3 lg:h-11'
 
+const JUDUL_SHEET = {
+  wa: 'Ubah nomor WhatsApp',
+  email: 'Ubah email',
+  sandi: 'Ubah password',
+}
+
 export default function Profile() {
-  const { user, saveProfile, logout, requestCode } = useAuth()
+  const { user, saveProfile, logout, verifyPassword, changePassword } = useAuth()
   const nav = useNavigate()
   const toast = useToast()
   const [nama, setNama] = useState(user?.nama || '')
   const [foto, setFoto] = useState(user?.foto_profil || '')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [change, setChange] = useState(null) // 'wa' | 'email'
+  const [change, setChange] = useState(null) // 'wa' | 'email' | 'sandi'
   const [newVal, setNewVal] = useState('')
-  const [otp, setOtp] = useState('')
-  const [mockCode, setMockCode] = useState('')
-  const [step, setStep] = useState(1)
+  const [pw, setPw] = useState('')
+  const [pwLama, setPwLama] = useState('')
+  const [pwBaru, setPwBaru] = useState('')
   const [confirmDel, setConfirmDel] = useState(false)
   if (!user) return null
 
@@ -53,56 +60,48 @@ export default function Profile() {
     }
   }
 
-  const startChange = () => {
+  const openChange = (jenis) => {
+    setChange(jenis)
+    setNewVal('')
+    setPw('')
+    setPwLama('')
+    setPwBaru('')
     setErr('')
-    try {
-      if (change === 'wa') {
-        const digits = newVal.replace(/\D/g, '')
-        const normalized = digits.startsWith('62') ? `+${digits}` : `+62${digits.replace(/^0/, '')}`
-        if (findUserByWA(normalized)) {
-          setErr('Nomor sudah dipakai akun lain.')
-          return
-        }
-        const r = requestCode(normalized)
-        setNewVal(r.wa)
-        setMockCode(r.code)
-        setStep(2)
-      } else {
-        if (!isValidEmail(newVal)) {
-          setErr('Tulis alamat email yang valid.')
-          return
-        }
-        if (findUserByEmail(newVal)) {
-          setErr('Email sudah dipakai akun lain.')
-          return
-        }
-        // Verifikasi ulang lewat OTP ke nomor WA terdaftar
-        const r = requestCode(user.whatsapp)
-        setMockCode(r.code)
-        setStep(2)
-      }
-    } catch (ex) {
-      setErr(ex.message)
-    }
   }
 
-  const applyChange = () => {
+  const tutupChange = () => {
+    setChange(null)
     setErr('')
+  }
+
+  /** Ganti nomor/email dikonfirmasi dengan password akun (dulu lewat kode OTP). */
+  const applyChange = async () => {
+    setErr('')
+    setBusy(true)
     try {
       if (change === 'wa') {
-        verifyOtp(newVal, otp)
-        saveProfile({ whatsapp: newVal })
+        const wa = normalizeWhatsapp(newVal)
+        if (!wa) throw new Error('Format nomor WhatsApp tidak valid. Contoh: 0812…')
+        if (findUserByWA(wa)) throw new Error('Nomor sudah dipakai akun lain.')
+        await verifyPassword(pw)
+        saveProfile({ whatsapp: wa })
+        toast.success('Nomor WhatsApp diperbarui.')
+      } else if (change === 'email') {
+        const email = newVal.trim()
+        if (email && !isValidEmail(email)) throw new Error('Tulis alamat email yang valid.')
+        if (email && findUserByEmail(email)) throw new Error('Email sudah dipakai akun lain.')
+        await verifyPassword(pw)
+        saveProfile({ email: email || null })
+        toast.success(email ? 'Email diperbarui.' : 'Email dihapus.')
       } else {
-        verifyOtp(user.whatsapp, otp)
-        saveProfile({ email: newVal.trim() })
+        await changePassword(pwLama, pwBaru)
+        toast.success('Password diperbarui.')
       }
-      toast.success('Kontak diperbarui setelah verifikasi.')
-      setChange(null)
-      setStep(1)
-      setOtp('')
-      setNewVal('')
+      tutupChange()
     } catch (ex) {
       setErr(ex.message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -123,13 +122,25 @@ export default function Profile() {
         <div>
           <p className="text-sm font-medium">Nomor WhatsApp</p>
           <p className="mt-1 text-sm">{formatWhatsapp(user.whatsapp)}</p>
-          <button type="button" onClick={() => { setChange('wa'); setStep(1); setNewVal(''); setOtp(''); setErr('') }} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">Ubah</button>
+          <button type="button" onClick={() => openChange('wa')} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">Ubah</button>
         </div>
         <div>
           <p className="text-sm font-medium">Email</p>
-          <p className="mt-1 break-all text-sm">{user.email}</p>
-          <button type="button" onClick={() => { setChange('email'); setStep(1); setNewVal(''); setOtp(''); setErr('') }} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">Ubah</button>
+          <p className="mt-1 break-all text-sm">{user.email || <span className="text-slate-500">Belum diisi</span>}</p>
+          <button type="button" onClick={() => openChange('email')} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">{user.email ? 'Ubah' : 'Tambah'}</button>
         </div>
+        <div>
+          <p className="text-sm font-medium">Status</p>
+          <p className="mt-1 text-sm">
+            {user.status ? statusLabel(user.status) : <span className="text-slate-500">Belum diisi</span>}
+            {user.status === 'mahasiswa' && user.fakultas && ` · ${fakultasLabel(user.fakultas)}`}
+          </p>
+        </div>
+      </div>
+      <div>
+        <p className="text-sm font-medium">Password</p>
+        <p className="mt-1 text-sm text-slate-500">••••••••</p>
+        <button type="button" onClick={() => openChange('sandi')} className="mt-1 inline-flex min-h-[44px] items-center text-sm text-slate-600 underline">Ubah password</button>
       </div>
       {err && !change && <p className="flex items-center gap-1 text-sm text-red-700" role="alert"><AlertCircle size={14} aria-hidden="true" /> {err}</p>}
       <div className="hidden lg:block"><Button type="submit" loading={busy}>Simpan perubahan</Button></div>
@@ -153,31 +164,39 @@ export default function Profile() {
         </div>
       </div>
 
-      <Sheet open={!!change} onClose={() => setChange(null)} title={change === 'wa' ? 'Ubah nomor WhatsApp' : 'Ubah email'}>
-        {step === 1 ? (
-          <div className="space-y-3">
-            {change === 'wa' ? (
-              <div className="flex">
-                <span aria-hidden="true" className="inline-flex h-12 items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 lg:h-11">+62</span>
-                <input value={newVal} onChange={(e) => setNewVal(e.target.value.replace(/[^\d\s-]/g, ''))} placeholder="812-3456-7890" inputMode="tel" aria-label="Nomor WhatsApp baru" className={`${inputCls} rounded-l-none`} />
-              </div>
-            ) : (
-              <input value={newVal} onChange={(e) => setNewVal(e.target.value)} placeholder="nama@email.com" type="email" aria-label="Email baru" className={inputCls} />
-            )}
-            <p className="text-xs text-slate-500">
-              {change === 'wa' ? `Kode OTP dikirim ke nomor baru. Nomor lama ${maskWhatsapp(user.whatsapp)} diganti setelah verifikasi.` : `Kode OTP dikirim ke WhatsApp ${maskWhatsapp(user.whatsapp)} untuk verifikasi ulang.`}
-            </p>
-            {err && <p className="text-sm text-red-700" role="alert">{err}</p>}
-            <Button className="w-full" onClick={startChange}>Kirim kode OTP</Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {mockCode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">Mode demo, kode OTP: <strong className="tracking-widest">{mockCode}</strong></p>}
-            <input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 digit" inputMode="numeric" aria-label="Kode OTP" className={`${inputCls} tracking-widest`} />
-            {err && <p className="text-sm text-red-700" role="alert">{err}</p>}
-            <Button className="w-full" onClick={applyChange}>Verifikasi dan simpan</Button>
-          </div>
-        )}
+      <Sheet open={!!change} onClose={tutupChange} title={JUDUL_SHEET[change] ?? ''}>
+        <div className="space-y-3">
+          {change === 'wa' && (
+            <div className="flex">
+              <span aria-hidden="true" className="inline-flex h-12 items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 lg:h-11">+62</span>
+              <input value={newVal} onChange={(e) => setNewVal(e.target.value.replace(/[^\d\s+-]/g, ''))} placeholder="812-3456-7890" inputMode="tel" aria-label="Nomor WhatsApp baru" className={`${inputCls} rounded-l-none`} />
+            </div>
+          )}
+          {change === 'email' && (
+            <input value={newVal} onChange={(e) => setNewVal(e.target.value)} placeholder="nama@email.com" type="email" aria-label="Email baru" className={inputCls} />
+          )}
+
+          {change === 'sandi' ? (
+            <>
+              <input type="password" value={pwLama} onChange={(e) => setPwLama(e.target.value)} placeholder="Password lama" autoComplete="current-password" aria-label="Password lama" className={inputCls} />
+              <input type="password" value={pwBaru} onChange={(e) => setPwBaru(e.target.value)} placeholder={`Password baru (minimal ${PASSWORD_MIN_LENGTH} karakter)`} autoComplete="new-password" aria-label="Password baru" className={inputCls} />
+            </>
+          ) : (
+            <>
+              <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password akunmu" autoComplete="current-password" aria-label="Password akun" className={inputCls} />
+              <p className="text-xs text-slate-500">
+                {change === 'wa'
+                  ? `Masukkan password untuk mengganti nomor ${formatWhatsapp(user.whatsapp)}.`
+                  : 'Masukkan password untuk mengganti email kontak. Boleh dikosongkan untuk menghapus email.'}
+              </p>
+            </>
+          )}
+
+          {err && <p className="text-sm text-red-700" role="alert">{err}</p>}
+          <Button className="w-full" loading={busy} onClick={applyChange}>
+            {change === 'sandi' ? 'Simpan password baru' : 'Simpan'}
+          </Button>
+        </div>
       </Sheet>
 
       <ConfirmDialog
