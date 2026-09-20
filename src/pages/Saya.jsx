@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../components/ui/Sheet'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { CLAIM_STATUS } from '../lib/constants'
-import { deleteReport, listReports, myClaims, setReportStatus } from '../lib/mockDb'
+import { deleteReport, listReports, myClaims } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
 import { timeAgo } from '../lib/time'
 
@@ -20,7 +20,7 @@ const LAPOR_FILTERS = [
   { id: 'selesai', label: 'Selesai' },
 ]
 
-function ReportRow({ r, onEdit, onCloseReport, onDelete }) {
+function ReportRow({ r, onEdit, onDelete }) {
   const cover = r.photos?.[0]?.url
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -43,11 +43,6 @@ function ReportRow({ r, onEdit, onCloseReport, onDelete }) {
         </summary>
         <div className="absolute right-0 z-10 w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-popover">
           <button onClick={() => onEdit(r)} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">Edit</button>
-          {r.status === 'aktif' && (
-            <button onClick={() => onCloseReport(r)} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">
-              {r.type === 'lost' ? 'Tandai ditemukan' : 'Tutup laporan'}
-            </button>
-          )}
           <button onClick={() => onDelete(r)} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Hapus</button>
         </div>
       </details>
@@ -116,10 +111,6 @@ export default function Saya() {
                 key={r.id}
                 r={r}
                 onEdit={(x) => nav(`/edit/${x.id}`)}
-                onCloseReport={(x) => {
-                  setReportStatus(x.id, user.id, x.type === 'lost' ? 'ditemukan' : 'kembali')
-                  toast.success('Laporan ditutup.')
-                }}
                 onDelete={(x) => setDel(x)}
               />
             ))}

@@ -189,7 +189,7 @@ export default function Layout({
   ]
 
   return (
-    <div className="min-h-dvh bg-slate-50 text-slate-900">
+    <div className="flex min-h-dvh flex-col bg-slate-50 text-slate-900">
       <a href="#konten" className="sr-only focus:not-sr-only focus:absolute focus:z-[70] focus:bg-white focus:p-2">Lewati ke konten</a>
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
         {/* Mobile app bar 56px */}
@@ -257,7 +257,7 @@ export default function Layout({
         </div>
       </header>
 
-      <main id="konten" className={`mx-auto w-full ${wide ? 'max-w-6xl px-4 md:px-6 lg:px-8' : 'max-w-3xl px-4 md:px-6'} pb-24 pt-4 lg:pb-10 lg:pt-6`}>
+      <main id="konten" className={`mx-auto w-full flex-1 ${wide ? 'max-w-6xl px-4 md:px-6 lg:px-8' : 'max-w-3xl px-4 md:px-6'} pb-24 pt-4 lg:pb-10 lg:pt-6`}>
         {children}
       </main>
 
