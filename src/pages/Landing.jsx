@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ClipboardList, Handshake, ScanSearch } from 'lucide-react'
+import { ChevronDown, ClipboardList, Handshake, ScanSearch } from 'lucide-react'
 import Layout from '../components/Layout'
 import ReportCard from '../components/ReportCard'
 import { SearchBar } from '../components/SearchFilter'
@@ -8,6 +8,49 @@ import { EmptyState } from '../components/ui/Feedback'
 import { useAuth } from '../contexts/AuthContext'
 import { listReports } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
+
+const FAQ_ITEMS = [
+  {
+    q: 'Apa itu TemuTemu?',
+    a: 'TemuTemu adalah portal barang hilang dan ditemukan untuk warga kampus — lapor, cari, cocokkan, dan serah terima langsung.',
+  },
+  {
+    q: 'Apakah TemuTemu berbayar?',
+    a: 'Tidak. TemuTemu gratis digunakan.',
+  },
+  {
+    q: 'Barang di luar kampus boleh dilaporkan?',
+    a: 'Tidak. Kami hanya melayani barang yang hilang atau ditemukan di lingkungan kampus, dan lokasinya wajib dipilih dari daftar area kampus.',
+  },
+  {
+    q: 'Bagaimana cara melaporkan barang hilang?',
+    a: 'Pilih "Buat laporan" lalu "Lapor kehilangan", isi ciri-ciri barang, lokasi kampus, dan foto. Selesai dalam 2 menit.',
+  },
+  {
+    q: 'Bagaimana cara melaporkan barang yang saya temukan?',
+    a: 'Pilih "Buat laporan" lalu "Lapor penemuan". Simpan ciri khusus yang hanya pemilik asli yang tahu, agar klaim dapat diperiksa.',
+  },
+  {
+    q: 'Bagaimana cara kerja pencocokan otomatis?',
+    a: 'Sistem memberi skor kemiripan antara laporan hilang dan temuan, lalu mengirim notifikasi ke kedua pihak jika ada yang cocok.',
+  },
+  {
+    q: 'Bagaimana cara mengklaim barang?',
+    a: 'Buka laporan barangnya, pilih "Klaim", lalu jawab pertanyaan verifikasi (ciri khusus / bukti kepemilikan). Kontak WhatsApp baru terbuka setelah klaim kamu diterima.',
+  },
+  {
+    q: 'Bagaimana proses serah terima dilakukan?',
+    a: 'Tatap muka langsung di tempat ramai area kampus. Penemu memeriksa bukti, lalu foto verifikasi diambil sebagai tanda barang sudah kembali.',
+  },
+  {
+    q: 'Apakah nomor WhatsApp atau email saya tampil publik?',
+    a: 'Tidak. Kontak pihak lawan hanya terbuka setelah klaim diterima, dan foto klaim serta serah terima hanya bisa dilihat pihak yang terlibat.',
+  },
+  {
+    q: 'Bagaimana cara menghapus akun?',
+    a: 'Dari halaman profil, pilih "Hapus akun". Data pribadimu dihapus atau dianonimkan.',
+  },
+]
 
 function Preview({ type, title, more }) {
   useDbVersion()
@@ -103,6 +146,28 @@ export default function Landing() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Pertanyaan umum */}
+      <section aria-label="Pertanyaan umum" className="mt-6">
+        <h2 className="text-lg font-semibold lg:text-xl">Pertanyaan umum</h2>
+        <div className="mt-3 space-y-2">
+          {FAQ_ITEMS.map(({ q, a }) => (
+            <details key={q} className="group rounded-xl border border-slate-200 bg-white">
+              <summary className="flex min-h-12 list-none cursor-pointer items-center justify-between gap-3 px-4 py-3 font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                {q}
+                <ChevronDown size={18} aria-hidden="true" className="shrink-0 text-slate-500 transition group-open:rotate-180" />
+              </summary>
+              <p className="px-4 pb-4 text-sm leading-relaxed text-slate-600">{a}</p>
+            </details>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-slate-600">
+          Masih ada pertanyaan? Baca{' '}
+          <Link to="/syarat" className="underline">Syarat dan Ketentuan</Link>
+          {' atau '}
+          <Link to="/privasi" className="underline">Kebijakan Privasi</Link>.
+        </p>
       </section>
 
       {!user && (
