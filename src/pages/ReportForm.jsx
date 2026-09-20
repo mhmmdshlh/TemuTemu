@@ -10,6 +10,7 @@ import CategoryIcon from '../components/ui/CategoryIcon'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { CAMPUS_LOCATIONS, CATEGORIES, categoryLabel, locationName } from '../lib/constants'
+import { MapPreview } from '../components/MapPreview'
 import { createReport, dismissMatch, getReport, getSecret, matchesForUser, updateReport } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
 import { toLocalInputValue } from '../lib/time'
@@ -219,6 +220,7 @@ export default function ReportForm({ side }) {
         user_id: user.id, type, judul: v.judul.trim(), kategori: v.kategori,
         deskripsi: v.deskripsi.trim(), warna: v.warna.trim(), merek: v.merek.trim(),
         location_id: v.location_id, keterangan_lokasi: v.keterangan_lokasi.trim(),
+        latitude: v.latitude || '', longitude: v.longitude || '',
         waktu_kejadian: new Date(v.waktu).toISOString(), lokasi_simpan: v.lokasi_simpan.trim(),
       }
       if (editing) {
@@ -289,16 +291,26 @@ export default function ReportForm({ side }) {
             <input id="ketlokasi" value={v.keterangan_lokasi} onChange={(e) => set('keterangan_lokasi', e.target.value)} placeholder="Lantai 2, dekat jendela" className={inputCls} />
           </Field>
           <Field label={isFound ? 'Waktu ditemukan' : 'Waktu hilang'} error={errors.waktu} id="waktu">
-            <div className="flex gap-2">
-              <button type="button" onClick={() => set('waktu', toLocalInputValue())} className="h-12 shrink-0 rounded-lg border border-slate-300 px-3 text-sm font-medium lg:h-11">Baru saja</button>
-              <button type="button" onClick={() => set('waktu', toLocalInputValue(new Date(new Date().setHours(8, 0, 0, 0)).toISOString()))} className="h-12 shrink-0 rounded-lg border border-slate-300 px-3 text-sm font-medium lg:h-11">Hari ini</button>
-            </div>
-            <input id="waktu" type="datetime-local" value={v.waktu} onChange={(e) => set('waktu', e.target.value)} className={`${inputCls} mt-2`} />
+            <input id="waktu" type="datetime-local" value={v.waktu} onChange={(e) => set('waktu', e.target.value)} className={inputCls} />
           </Field>
+        </Section>
+        <Section n={4} title="Peta lokasi">
+          <MapPreview
+            latitude={v.latitude || ''}
+            longitude={v.longitude || ''}
+            onSelect={(lat, lng) => {
+              set('latitude', lat)
+              set('longitude', lng)
+            }}
+            disabled={!v.location_id}
+          />
+          {v.location_id && (
+            <p className="text-xs text-slate-500 mt-1">Area kampus: {locationName(v.location_id)}{v.keterangan_lokasi ? `, ${v.keterangan_lokasi}` : ''}</p>
+          )}
         </Section>
 
         {isFound && (
-          <Section n={4} title="Tambahan">
+          <Section n={5} title="Tambahan">
             <Field label="Ciri khusus" optional id="secret" hint="Hanya kamu yang melihatnya. Dipakai untuk memeriksa klaim.">
               <textarea id="secret" value={v.secret} onChange={(e) => set('secret', e.target.value)} rows={2} placeholder="Contoh: isi dompet atau goresan khusus." className={`${inputCls} h-auto min-h-[64px] py-2`} />
             </Field>

@@ -4,6 +4,7 @@ import { Lock, MoreHorizontal, Share2 } from 'lucide-react'
 import Comments from '../components/Comments'
 import Layout, { StickyBar } from '../components/Layout'
 import MatchCard from '../components/MatchCard'
+import { MapPreview } from '../components/MapPreview'
 import PhotoGallery from '../components/PhotoGallery'
 import PhotoUploader from '../components/PhotoUploader'
 import Badge from '../components/ui/Badge'
@@ -129,6 +130,17 @@ export default function ReportDetail() {
     ['Merek', r.merek || '-'],
   ]
 
+  const hasCoords =
+    Number.isFinite(parseFloat(r.latitude)) && Number.isFinite(parseFloat(r.longitude))
+  const locationMap = hasCoords && (
+    <div className="col-span-2 mt-1">
+      <MapPreview latitude={r.latitude} longitude={r.longitude} />
+      <p className="mt-1 text-xs text-slate-500">
+        {r.keterangan_lokasi ? `${locationName(r.location_id)}, ${r.keterangan_lokasi}` : locationName(r.location_id)}
+      </p>
+    </div>
+  )
+
   const infoList = (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
       {infoRows.map(([k, v]) => (
@@ -137,6 +149,7 @@ export default function ReportDetail() {
           <dd className="text-sm font-medium text-slate-900">{v}</dd>
         </div>
       ))}
+      {locationMap}
     </dl>
   )
 

@@ -186,6 +186,8 @@ export function createReport(data, photoUrls = [], detailRahasia = '') {
     merek: data.merek || '',
     location_id: data.location_id,
     keterangan_lokasi: data.keterangan_lokasi || '',
+    latitude: data.latitude || '',
+    longitude: data.longitude || '',
     waktu_kejadian: data.waktu_kejadian,
     lokasi_simpan: data.lokasi_simpan || '',
     status: 'aktif',

@@ -22,6 +22,7 @@ create table if not exists users (
 );
 
 -- Satu tabel reports dengan kolom type (lost/found)
+-- Ditambahkan kolom latitude & longitude untuk koordinat visual map
 create table if not exists reports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete set null,
@@ -33,7 +34,9 @@ create table if not exists reports (
   merek text default '',
   location_id text not null references campus_locations(id),
   keterangan_lokasi text default '',
-  waktu_kejadian timestamptz not null,
+
+  latitude text default "",     -- koordinat latitude (decimal degrees) untuk visual map
+  longitude text default "",    -- koordinat longitude (decimal degrees) untuk visual map  waktu_kejadian timestamptz not null,
   lokasi_simpan text default '',
   status text not null default 'aktif',
   hidden boolean not null default false,
