@@ -2,14 +2,30 @@
 
 import { createReport, createUser, loadDb } from '../lib/mockDb'
 
+import { hashPassword, DEMO_PASSWORD } from '../lib/password'
+
 const IMG = (seed) => `https://picsum.photos/seed/${seed}/640/420`
 
 export function seedDemo() {
   const db = loadDb()
   if (db.users.length > 0) return
 
-  const andi = createUser({ nama: 'Andi Pratama', whatsapp: '+6281234567890', email: 'andi@mail.com' })
-  const siti = createUser({ nama: 'Siti Rahma', whatsapp: '+6289876543210', email: 'siti@mail.com' })
+  // Akun demo memakai password yang sama dan ditampilkan di halaman Masuk (mode demo).
+  const andi = createUser({
+    nama: 'Andi Pratama',
+    whatsapp: '+6281234567890',
+    email: 'andi@mail.com',
+    password_hash: hashPassword(DEMO_PASSWORD),
+    status: 'mahasiswa',
+    fakultas: 'fak-teknik',
+  })
+  const siti = createUser({
+    nama: 'Siti Rahma',
+    whatsapp: '+6289876543210',
+    email: 'siti@mail.com',
+    password_hash: hashPassword(DEMO_PASSWORD),
+    status: 'dosen',
+  })
 
   const daysAgo = (d, h = 9) => {
     const t = new Date()

@@ -204,7 +204,7 @@ export default function ReportDetail() {
       {/* Breadcrumb desktop */}
       <nav aria-label="Breadcrumb" className="mb-3 hidden text-sm text-slate-500 lg:block">
         <Link to="/" className="underline">Beranda</Link> {'› '}
-        <Link to={isFound ? '/ditemukan' : '/hilang'} className="underline">{isFound ? 'Barang ditemukan' : 'Barang hilang'}</Link> {'› '}
+        <Link to={isFound ? '/laporan?jenis=found' : '/laporan?jenis=lost'} className="underline">{isFound ? 'Barang ditemukan' : 'Barang hilang'}</Link> {'› '}
         <span className="text-slate-900">{r.judul}</span>
       </nav>
 
@@ -295,7 +295,7 @@ export default function ReportDetail() {
         title="Hapus laporan ini?"
         desc="Laporan dan komentarnya akan dihapus permanen."
         confirmLabel="Hapus laporan"
-        onConfirm={async () => { deleteReport(id, user.id); toast.success('Laporan dihapus.'); nav(isFound ? '/ditemukan' : '/hilang') }}
+        onConfirm={async () => { deleteReport(id, user.id); toast.success('Laporan dihapus.'); nav(isFound ? '/laporan?jenis=found' : '/laporan?jenis=lost') }}
       />
       <ConfirmDialog
         open={confirm === 'ditemukan'}

@@ -16,8 +16,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/hilang" element={<ReportList key="lost" type="lost" />} />
-      <Route path="/ditemukan" element={<ReportList key="found" type="found" />} />
+      <Route path="/laporan" element={<ReportList />} />
       <Route path="/laporan/:id" element={<ReportDetail />} />
       <Route path="/masuk" element={<Masuk />} />
       <Route path="/syarat" element={<Legal kind="syarat" />} />
@@ -32,6 +31,9 @@ export default function App() {
       <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
       {/* Kompatibilitas rute lama */}
+      <Route path="/hilang" element={<Navigate to="/laporan?jenis=lost" replace />} />
+      <Route path="/ditemukan" element={<Navigate to="/laporan?jenis=found" replace />} />
+      <Route path="/profile" element={<Navigate to="/profil" replace />} />
       <Route path="/buat" element={<Navigate to="/buat/hilang" replace />} />
       <Route path="/daftar" element={<Navigate to="/masuk" replace />} />
       <Route path="/saya/laporan" element={<Navigate to="/saya" replace />} />

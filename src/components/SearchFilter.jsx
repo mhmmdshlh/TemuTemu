@@ -132,7 +132,7 @@ export function MobileFilterBar({ f, set }) {
 }
 
 /** Desktop: sidebar 280px sticky + dropdown urutan. */
-export function DesktopSidebar({ f, set }) {
+export function DesktopSidebar({ f, set, jenis, setJenis, counts }) {
   const group = (title, children) => (
     <fieldset className="border-t border-slate-200 pt-3">
       <legend className="px-1 text-sm font-semibold">{title}</legend>
@@ -145,7 +145,13 @@ export function DesktopSidebar({ f, set }) {
       {label}
     </label>
   )
-  const dirty = f.kategori || f.lokasi || f.dari || f.sampai
+  const radioJenis = (val, label, n) => (
+    <label key={val} className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+      <input type="radio" name="jenis" checked={jenis === val} onChange={() => setJenis(val)} className="h-4 w-4 accent-slate-900" />
+      {label}{typeof n === 'number' ? `(${n})` : ''}
+    </label>
+  )
+  const dirty = f.kategori || f.lokasi || f.status || f.dari || f.sampai
   return (
     <aside aria-label="Filter" className="hidden w-[280px] shrink-0 lg:block">
       <div className="sticky top-20 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -157,6 +163,11 @@ export function DesktopSidebar({ f, set }) {
             </button>
           )}
         </div>
+        {setJenis && group('Jenis', [
+          radioJenis('semua', 'Semua', counts?.semua),
+          radioJenis('lost', 'Barang hilang', counts?.lost),
+          radioJenis('found', 'Ditemukan', counts?.found),
+        ])}
         {group('Kategori', [
           radio('kategori', '', 'Semua', f.kategori),
           ...CATEGORIES.map((c) => radio('kategori', c.id, c.label, f.kategori)),

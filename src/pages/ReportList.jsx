@@ -7,27 +7,44 @@ import ReportCard from '../components/ReportCard'
 import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../components/SearchFilter'
 import Button from '../components/ui/Button'
 import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
-import { listReports, matchesForUser } from '../lib/mockDb'
+import { ALL_STATUS, FOUND_STATUS, LOST_STATUS } from '../lib/constants'
+import { countReportsByType, listReports, matchesForUser } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
 import { useAuth } from '../contexts/AuthContext'
 
 const PER_PAGE = 20
 
-export default function ReportList({ type }) {
+/** 'semua' = barang hilang dan ditemukan sekaligus. */
+const JENIS_VALID = ['lost', 'found']
+const JUDUL = { semua: 'Laporan', lost: 'Barang hilang', found: 'Barang ditemukan' }
+const STATUS_JENIS = { semua: ALL_STATUS, lost: LOST_STATUS, found: FOUND_STATUS }
+
+export default function ReportList() {
   const { user } = useAuth()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const v = useDbVersion()
   const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
   const [firstLoad, setFirstLoad] = useState(true)
   const moreRef = useRef(null)
 
+  // Jenis laporan disimpan di URL supaya tautan lama (/hilang, /ditemukan) dan
+  // tautan dari halaman lain tetap bisa membuka daftar dengan jenis tertentu.
+  const jenisParam = params.get('jenis')
+  const jenis = JENIS_VALID.includes(jenisParam) ? jenisParam : 'semua'
+  const setJenis = (next) => {
+    const p = new URLSearchParams(params)
+    if (next === 'semua') p.delete('jenis')
+    else p.set('jenis', next)
+    setParams(p, { replace: true })
+  }
+
   // Pulihkan posisi scroll saat kembali dari detail
   useEffect(() => {
-    const y = sessionStorage.getItem(`scroll_${type}`)
+    const y = sessionStorage.getItem(`scroll_laporan_${jenis}`)
     if (y) requestAnimationFrame(() => window.scrollTo(0, Number(y)))
-  }, [type])
+  }, [jenis])
 
-  useEffect(() => () => sessionStorage.setItem(`scroll_${type}`, String(window.scrollY)), [type])
+  useEffect(() => () => sessionStorage.setItem(`scroll_laporan_${jenis}`, String(window.scrollY)), [jenis])
 
   // Skeleton singkat saat pertama dibuka
   useEffect(() => {
@@ -37,7 +54,14 @@ export default function ReportList({ type }) {
   const loading = firstLoad
 
   const data = useMemo(
-    () => listReports({ type, ...f, perPage: f.limit }),
+    () => listReports({ ...f, type: jenis === 'semua' ? null : jenis, perPage: f.limit }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [jenis, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit, v],
+  )
+
+  // Jumlah laporan per jenis dengan filter yang sedang aktif → "Semua(12)" dsb.
+  const counts = useMemo(
+    () => countReportsByType({ q: f.q, kategori: f.kategori, lokasi: f.lokasi, status: f.status, dari: f.dari, sampai: f.sampai }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [type, f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit, v],
   )
@@ -62,20 +86,25 @@ export default function ReportList({ type }) {
     return () => obs.disconnect()
   }, [data.items.length, data.total])
 
-  const isLost = type === 'lost'
-  const filtered = f.q || f.kategori || f.lokasi || f.dari || f.sampai
+  const statuses = STATUS_JENIS[jenis]
+  const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
+  // Aksi buat laporan mengikuti jenis yang sedang dilihat.
+  const buatTo = jenis === 'found' ? '/buat/temuan' : '/buat/hilang'
+  const buatLabel = jenis === 'found'
+    ? 'Buat laporan penemuan'
+    : jenis === 'lost' ? 'Buat laporan kehilangan' : 'Buat laporan'
 
   const set = (next) => setF(typeof next === 'function' ? next : { ...next, limit: typeof next.limit === 'number' ? next.limit : PER_PAGE })
 
   return (
-    <Layout fabSide={type} wide>
-      <SegmentedControl />
+    <Layout fabSide={jenis === 'semua' ? 'all' : jenis} wide>
+      <SegmentedControl jenis={jenis} onChange={setJenis} counts={counts} />
       <div className="mt-3 lg:mt-6 lg:flex lg:gap-6">
-        <DesktopSidebar f={f} set={set} />
+        <DesktopSidebar f={f} set={set} jenis={jenis} setJenis={setJenis} counts={counts} />
         <div className="min-w-0 flex-1">
           <div className="lg:flex lg:items-center lg:justify-between">
             <h1 className="hidden text-[28px] font-bold leading-9 lg:block">
-              {isLost ? 'Barang hilang' : 'Barang ditemukan'} ({data.total})
+              {JUDUL[jenis]} ({data.total})
             </h1>
             <div className="flex items-center gap-2">
               <div className="flex-1 lg:w-[360px] lg:flex-none">
@@ -99,13 +128,13 @@ export default function ReportList({ type }) {
                     filtered ? (
                       <span className="flex flex-wrap justify-center gap-2">
                         <Button variant="secondary" onClick={() => set({ q: '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })}>Reset filter</Button>
-                        <Link to={isLost ? '/buat/hilang' : '/buat/temuan'} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
-                          {isLost ? 'Buat laporan kehilangan' : 'Buat laporan penemuan'}
+                        <Link to={buatTo} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                          {buatLabel}
                         </Link>
                       </span>
                     ) : (
-                      <Link to={isLost ? '/buat/hilang' : '/buat/temuan'} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
-                        {isLost ? 'Buat laporan kehilangan' : 'Buat laporan penemuan'}
+                      <Link to={buatTo} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                        {buatLabel}
                       </Link>
                     )
                   }
