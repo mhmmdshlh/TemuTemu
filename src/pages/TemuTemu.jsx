@@ -47,7 +47,20 @@ export default function TemuTemu() {
 
       const { data: rows, error, count } = await query
       if (error) throw error
-      setData({ items: rows || [], total: count || 0 })
+      const list = rows || []
+      if (list.length > 0) {
+        const { data: photos } = await supabase
+          .from('report_photos')
+          .select('report_id, url')
+          .in('report_id', list.map((r) => r.id))
+          .order('urutan')
+        const byId = {}
+        ;(photos || []).forEach((p) => {
+          ;(byId[p.report_id] ??= []).push({ url: p.url })
+        })
+        list.forEach((r) => { r.photos = byId[r.id] || [] })
+      }
+      setData({ items: list, total: count || 0 })
     } catch (err) {
       console.error('Error fetching returned reports:', err)
       setData({ items: [], total: 0 })

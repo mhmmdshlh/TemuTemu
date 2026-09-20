@@ -84,7 +84,20 @@ export default function ReportList() {
 
       const { data, error, count } = await query
       if (error) throw error
-      setReportData({ items: data || [], total: count || 0 })
+      const list = data || []
+      if (list.length > 0) {
+        const { data: photos } = await supabase
+          .from('report_photos')
+          .select('report_id, url')
+          .in('report_id', list.map((r) => r.id))
+          .order('urutan')
+        const byId = {}
+        ;(photos || []).forEach((p) => {
+          ;(byId[p.report_id] ??= []).push({ url: p.url })
+        })
+        list.forEach((r) => { r.photos = byId[r.id] || [] })
+      }
+      setReportData({ items: list, total: count || 0 })
     } catch (err) {
       console.error('Error fetching reports:', err)
       setReportData({ items: [], total: 0 })
