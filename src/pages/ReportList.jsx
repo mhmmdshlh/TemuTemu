@@ -7,9 +7,7 @@ import ReportCard from '../components/ReportCard'
 import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../components/SearchFilter'
 import Button from '../components/ui/Button'
 import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
-import { ALL_STATUS, FOUND_STATUS, LOST_STATUS } from '../lib/constants'
 import { countReportsByType, listReports, matchesForUser } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
 import { useAuth } from '../contexts/AuthContext'
 
 const PER_PAGE = 20
@@ -17,12 +15,10 @@ const PER_PAGE = 20
 /** 'semua' = barang hilang dan ditemukan sekaligus. */
 const JENIS_VALID = ['lost', 'found']
 const JUDUL = { semua: 'Laporan', lost: 'Barang hilang', found: 'Barang ditemukan' }
-const STATUS_JENIS = { semua: ALL_STATUS, lost: LOST_STATUS, found: FOUND_STATUS }
 
 export default function ReportList() {
-  const { user } = useAuth()
+    const { user } = useAuth()
   const [params, setParams] = useSearchParams()
-  const v = useDbVersion()
   const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
   const [firstLoad, setFirstLoad] = useState(true)
   const moreRef = useRef(null)
@@ -56,21 +52,21 @@ export default function ReportList() {
   const data = useMemo(
     () => listReports({ ...f, type: jenis === 'semua' ? null : jenis, perPage: f.limit }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jenis, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit, v],
+    [jenis, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit],
   )
 
   // Jumlah laporan per jenis dengan filter yang sedang aktif → "Semua(12)" dsb.
   const counts = useMemo(
     () => countReportsByType({ q: f.q, kategori: f.kategori, lokasi: f.lokasi, status: f.status, dari: f.dari, sampai: f.sampai }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit, v],
+    [jenis, f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit],
   )
 
   const matchIds = useMemo(() => {
     if (!user) return new Set()
     const ms = matchesForUser(user.id).filter((m) => m.status === 'baru')
     return new Set(ms.flatMap((m) => [m.lost_report_id, m.found_report_id]))
-  }, [user, v]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, f.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Muat otomatis saat mendekati akhir
   useEffect(() => {
@@ -86,7 +82,7 @@ export default function ReportList() {
     return () => obs.disconnect()
   }, [data.items.length, data.total])
 
-  const statuses = STATUS_JENIS[jenis]
+  
   const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
   // Aksi buat laporan mengikuti jenis yang sedang dilihat.
   const buatTo = jenis === 'found' ? '/buat/temuan' : '/buat/hilang'
