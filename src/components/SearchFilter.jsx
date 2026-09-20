@@ -50,12 +50,12 @@ const catMap = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label]))
 const locMap = Object.fromEntries(CAMPUS_LOCATIONS.map((l) => [l.id, l.nama]))
 
 /** Mobile FilterBar: baris chip geser + bottom sheet per filter. */
-export function MobileFilterBar({ f, set, statuses }) {
-  const [sheet, setSheet] = useState(null) // kategori | lokasi | tanggal | status
+export function MobileFilterBar({ f, set }) {
+  const [sheet, setSheet] = useState(null) // kategori | lokasi | tanggal
   const [draft, setDraft] = useState({})
 
   const open = (name) => {
-    setDraft({ kategori: f.kategori, lokasi: f.lokasi, status: f.status, dari: f.dari, sampai: f.sampai })
+    setDraft({ kategori: f.kategori, lokasi: f.lokasi, dari: f.dari, sampai: f.sampai })
     setSheet(name)
   }
   const apply = () => {
@@ -63,7 +63,7 @@ export function MobileFilterBar({ f, set, statuses }) {
     setSheet(null)
   }
   const resetSheet = () => {
-    const empty = { kategori: '', lokasi: '', status: '', dari: '', sampai: '' }
+    const empty = { kategori: '', lokasi: '', dari: '', sampai: '' }
     setDraft({ ...draft, ...empty })
   }
   const clearOne = (key) => {
@@ -75,7 +75,6 @@ export function MobileFilterBar({ f, set, statuses }) {
     { key: 'kategori', label: 'Kategori', filled: f.kategori, text: chipLabel('Kategori', f.kategori, catMap) },
     { key: 'lokasi', label: 'Lokasi', filled: f.lokasi, text: chipLabel('Lokasi', f.lokasi, locMap) },
     { key: 'tanggal', label: 'Tanggal', filled: f.dari || f.sampai, text: f.dari || f.sampai ? `${f.dari || '…'} – ${f.sampai || '…'}` : 'Tanggal' },
-    { key: 'status', label: 'Status', filled: f.status, text: chipLabel('Status', f.status, Object.fromEntries(statuses.map((s) => [s.id, s.label]))) },
   ]
 
   const optBtn = (selected, onPick, label) => (
@@ -119,12 +118,6 @@ export function MobileFilterBar({ f, set, statuses }) {
             {CAMPUS_LOCATIONS.map((l) => optBtn(draft.lokasi === l.id, () => setDraft({ ...draft, lokasi: l.id }), l.nama))}
           </div>
         )}
-        {sheet === 'status' && (
-          <div className="space-y-2">
-            {optBtn(!draft.status, () => setDraft({ ...draft, status: '' }), 'Semua status')}
-            {statuses.map((s) => optBtn(draft.status === s.id, () => setDraft({ ...draft, status: s.id }), s.label))}
-          </div>
-        )}
         {sheet === 'tanggal' && (
           <div className="grid grid-cols-2 gap-2">
             <label className="text-sm font-medium">Dari<input type="date" value={draft.dari ?? ''} onChange={(e) => setDraft({ ...draft, dari: e.target.value })} className="mt-1 h-12 w-full rounded-lg border border-slate-300 px-3" /></label>
@@ -141,7 +134,7 @@ export function MobileFilterBar({ f, set, statuses }) {
 }
 
 /** Desktop: sidebar 280px sticky + dropdown urutan. */
-export function DesktopSidebar({ f, set, statuses }) {
+export function DesktopSidebar({ f, set }) {
   const group = (title, children) => (
     <fieldset className="border-t border-slate-200 pt-3">
       <legend className="px-1 text-sm font-semibold">{title}</legend>
@@ -154,14 +147,14 @@ export function DesktopSidebar({ f, set, statuses }) {
       {label}
     </label>
   )
-  const dirty = f.kategori || f.lokasi || f.status || f.dari || f.sampai
+  const dirty = f.kategori || f.lokasi || f.dari || f.sampai
   return (
     <aside aria-label="Filter" className="hidden w-[280px] shrink-0 lg:block">
       <div className="sticky top-20 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Filter</h2>
           {dirty && (
-            <button onClick={() => set({ ...f, kategori: '', lokasi: '', status: '', dari: '', sampai: '', page: 1 })} className="text-sm text-slate-600 underline">
+            <button onClick={() => set({ ...f, kategori: '', lokasi: '', dari: '', sampai: '', page: 1 })} className="text-sm text-slate-600 underline">
               Reset filter
             </button>
           )}
@@ -173,10 +166,6 @@ export function DesktopSidebar({ f, set, statuses }) {
         {group('Lokasi', [
           radio('lokasi', '', 'Semua', f.lokasi),
           ...CAMPUS_LOCATIONS.map((l) => radio('lokasi', l.id, l.nama, f.lokasi)),
-        ])}
-        {group('Status', [
-          radio('status', '', 'Semua', f.status),
-          ...statuses.map((s) => radio('status', s.id, s.label, f.status)),
         ])}
         <fieldset className="border-t border-slate-200 pt-3">
           <legend className="px-1 text-sm font-semibold">Tanggal</legend>

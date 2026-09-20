@@ -7,7 +7,6 @@ import ReportCard from '../components/ReportCard'
 import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../components/SearchFilter'
 import Button from '../components/ui/Button'
 import { EmptyState, ListSkeleton } from '../components/ui/Feedback'
-import { FOUND_STATUS, LOST_STATUS } from '../lib/constants'
 import { listReports, matchesForUser } from '../lib/mockDb'
 import { useDbVersion } from '../lib/useDb'
 import { useAuth } from '../contexts/AuthContext'
@@ -18,7 +17,7 @@ export default function ReportList({ type }) {
   const { user } = useAuth()
   const [params] = useSearchParams()
   const v = useDbVersion()
-  const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', status: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
+  const [f, setF] = useState({ q: params.get('q') ?? '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })
   const [firstLoad, setFirstLoad] = useState(true)
   const moreRef = useRef(null)
 
@@ -40,7 +39,7 @@ export default function ReportList({ type }) {
   const data = useMemo(
     () => listReports({ type, ...f, perPage: f.limit }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, f.q, f.kategori, f.lokasi, f.status, f.dari, f.sampai, f.page, f.sort, f.limit, v],
+    [type, f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit, v],
   )
 
   const matchIds = useMemo(() => {
@@ -64,8 +63,7 @@ export default function ReportList({ type }) {
   }, [data.items.length, data.total])
 
   const isLost = type === 'lost'
-  const statuses = isLost ? LOST_STATUS : FOUND_STATUS
-  const filtered = f.q || f.kategori || f.lokasi || f.status || f.dari || f.sampai
+  const filtered = f.q || f.kategori || f.lokasi || f.dari || f.sampai
 
   const set = (next) => setF(typeof next === 'function' ? next : { ...next, limit: typeof next.limit === 'number' ? next.limit : PER_PAGE })
 
@@ -73,7 +71,7 @@ export default function ReportList({ type }) {
     <Layout fabSide={type} wide>
       <SegmentedControl />
       <div className="mt-3 lg:mt-6 lg:flex lg:gap-6">
-        <DesktopSidebar f={f} set={set} statuses={statuses} />
+        <DesktopSidebar f={f} set={set} />
         <div className="min-w-0 flex-1">
           <div className="lg:flex lg:items-center lg:justify-between">
             <h1 className="hidden text-[28px] font-bold leading-9 lg:block">
@@ -86,7 +84,7 @@ export default function ReportList({ type }) {
               <SortSelect value={f.sort} onChange={(sort) => set({ ...f, sort, page: 1 })} />
             </div>
           </div>
-          <div className="mt-2"><MobileFilterBar f={f} set={set} statuses={statuses} /></div>
+          <div className="mt-2"><MobileFilterBar f={f} set={set} /></div>
 
           <div className="mt-3 grid gap-3 lg:mt-4 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {loading ? (
@@ -100,7 +98,7 @@ export default function ReportList({ type }) {
                   action={
                     filtered ? (
                       <span className="flex flex-wrap justify-center gap-2">
-                        <Button variant="secondary" onClick={() => set({ q: '', kategori: '', lokasi: '', status: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })}>Reset filter</Button>
+                        <Button variant="secondary" onClick={() => set({ q: '', kategori: '', lokasi: '', dari: '', sampai: '', page: 1, sort: 'terbaru', limit: PER_PAGE })}>Reset filter</Button>
                         <Link to={isLost ? '/buat/hilang' : '/buat/temuan'} className="inline-flex h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
                           {isLost ? 'Buat laporan kehilangan' : 'Buat laporan penemuan'}
                         </Link>
