@@ -86,7 +86,7 @@ function LocationPicker({ value, onPick }) {
       <Sheet open={open} onClose={() => setOpen(false)} title="Pilih area kampus">
         <div className="relative mb-2">
           <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari gedung…" aria-label="Cari area kampus" className={`${inputCls} pl-9`} />
+          <input data-autofocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari gedung…" aria-label="Cari area kampus" className={`${inputCls} pl-9`} />
         </div>
         <div className="max-h-[50dvh] space-y-1 overflow-y-auto">
           {list.map((l) => (

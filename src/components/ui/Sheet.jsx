@@ -9,6 +9,11 @@ import Button from './Button'
 export default function Sheet({ open, onClose, title, children, labelledBy }) {
   const ref = useRef(null)
   const prevFocus = useRef(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     if (!open) return
@@ -16,7 +21,7 @@ export default function Sheet({ open, onClose, title, children, labelledBy }) {
     const close = ref.current?.querySelector('[data-autofocus]') ?? ref.current?.querySelector('button, input, select, textarea')
     close?.focus()
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCloseRef.current()
       if (e.key === 'Tab') {
         const els = ref.current?.querySelectorAll('button, input, select, textarea, a[href]')
         if (!els?.length) return
@@ -38,7 +43,7 @@ export default function Sheet({ open, onClose, title, children, labelledBy }) {
       document.body.style.overflow = ''
       prevFocus.current?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (
