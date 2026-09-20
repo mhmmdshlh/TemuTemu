@@ -11,7 +11,7 @@ import { useDbVersion } from '../lib/useDb'
 
 function Preview({ type, title, more }) {
   useDbVersion()
-  const items = listReports({ type, perPage: 3 }).items
+  const items = listReports({ type, perPage: 6 }).items
   return (
     <section aria-label={title} className="mt-6">
       <div className="flex items-center justify-between">
@@ -23,7 +23,7 @@ function Preview({ type, title, more }) {
       {items.length === 0 ? (
         <p className="mt-2 text-sm text-slate-500">Belum ada laporan.</p>
       ) : (
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((r) => <ReportCard key={r.id} r={r} />)}
         </div>
       )}
@@ -66,7 +66,7 @@ export default function Landing() {
             >
               Saya menemukan barang
             </Link>
-          </div>
+          </div>  
         </div>
         <div aria-hidden="true" className="mt-6 hidden rounded-2xl bg-gradient-to-br from-hilang-100 via-white to-temuan-100 p-10 lg:block">
           <p className="text-center text-6xl">🎒</p>
@@ -82,7 +82,7 @@ export default function Landing() {
         </button>
       </form>
 
-      <div className="lg:grid lg:grid-cols-2 lg:gap-8">
+      <div className="space-y-2">
         <Preview type="lost" title="Barang hilang terbaru" more="/hilang" />
         <Preview type="found" title="Barang ditemukan terbaru" more="/ditemukan" />
       </div>
