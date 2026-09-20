@@ -68,6 +68,11 @@ export default function ReportDetail() {
 
   const [matches, setMatches] = useState([])
   const [claims, setClaims] = useState([])
+  const [claimOpen, setClaimOpen] = useState(false)
+  const [bukti, setBukti] = useState('')
+  const [buktiFotos, setBuktiFotos] = useState([])
+  const [claimErr, setClaimErr] = useState('')
+  const [showSecret, setShowSecret] = useState(false)
   useEffect(() => {
     if (!r || !user) { setMatches([]); setClaims([]); return }
     let alive = true
@@ -112,11 +117,6 @@ export default function ReportDetail() {
   const isFound = r.type === 'found'
   const closed = isFound ? r.status === 'kembali' : r.status === 'ditemukan'
   const ownerKind = isFound ? 'Penemu' : 'Pelapor'
-  const [claimOpen, setClaimOpen] = useState(false)
-  const [bukti, setBukti] = useState('')
-  const [buktiFotos, setBuktiFotos] = useState([])
-  const [claimErr, setClaimErr] = useState('')
-  const [showSecret, setShowSecret] = useState(false)
 
   const share = async () => {
     const url = `${window.location.origin}/laporan/${id}`
