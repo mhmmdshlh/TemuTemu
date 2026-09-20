@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, Search, X } from 'lucide-react'
 import { CAMPUS_LOCATIONS, CATEGORIES } from '../lib/constants'
+import LocationFilter from './LocationFilter'
 import Button from './ui/Button'
 import Sheet from './ui/Sheet'
 
@@ -113,10 +114,7 @@ export function MobileFilterBar({ f, set }) {
           </div>
         )}
         {sheet === 'lokasi' && (
-          <div className="space-y-2">
-            {optBtn(!draft.lokasi, () => setDraft({ ...draft, lokasi: '' }), 'Semua lokasi')}
-            {CAMPUS_LOCATIONS.map((l) => optBtn(draft.lokasi === l.id, () => setDraft({ ...draft, lokasi: l.id }), l.nama))}
-          </div>
+          <LocationFilter variant="sheet" value={draft.lokasi} onChange={(lokasi) => setDraft({ ...draft, lokasi })} />
         )}
         {sheet === 'tanggal' && (
           <div className="grid grid-cols-2 gap-2">
@@ -164,8 +162,7 @@ export function DesktopSidebar({ f, set }) {
           ...CATEGORIES.map((c) => radio('kategori', c.id, c.label, f.kategori)),
         ])}
         {group('Lokasi', [
-          radio('lokasi', '', 'Semua', f.lokasi),
-          ...CAMPUS_LOCATIONS.map((l) => radio('lokasi', l.id, l.nama, f.lokasi)),
+          <LocationFilter key="lokasi" value={f.lokasi} onChange={(lokasi) => set({ ...f, lokasi, page: 1 })} name="lokasi-desktop" />,
         ])}
         <fieldset className="border-t border-slate-200 pt-3">
           <legend className="px-1 text-sm font-semibold">Tanggal</legend>
