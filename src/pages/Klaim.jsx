@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { CalendarCheck, MapPin, Send, User, X } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { CalendarCheck, MapPin, Send, Trash2, User, X } from 'lucide-react'
 import Layout from '../components/Layout'
 import PhotoGallery from '../components/PhotoGallery'
 import Badge from '../components/ui/Badge'
@@ -11,6 +11,7 @@ import { formatDateTime } from '../lib/time'
 
 export default function Klaim() {
   const { id } = useParams()
+  const nav = useNavigate()
   const [c, setC] = useState(null)
   const [photos, setPhotos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -37,7 +38,7 @@ export default function Klaim() {
       const [{ data: rp }, { data: cp }, { data: ph }] = await Promise.all([
         supabase.from('public_reports').select('*').eq('id', row.found_report_id).maybeSingle(),
         supabase.from('users').select('nama, status').eq('id', row.claimant_id).maybeSingle(),
-        supabase.from('claim_photos').select('url, url_privat').eq('claim_id', id).order('urutan'),
+        supabase.from('claim_photos').select('url_privat').eq('claim_id', id).order('created_at'),
       ])
       if (!alive) return
       let op = null
@@ -46,7 +47,7 @@ export default function Klaim() {
         op = o
       }
       setC({ ...row, report: rp, claimant: cp, owner: op })
-      setPhotos((ph || []).map((p) => p.url || p.url_privat).filter(Boolean))
+      setPhotos((ph || []).map((p) => p.url_privat).filter(Boolean))
       setLoading(false)
     }
     if (id) load()
@@ -78,7 +79,8 @@ export default function Klaim() {
   const isPengklaim = me && c.claimant_id === me
   const canApprove = isPemilik && c.status === 'menunggu'
   const canVerify = isPemilik && c.status === 'diterima'
-  const canCancel = isPengklaim && ['menunggu', 'diterima'].includes(c.status)
+  const canCancel = isPengklaim && c.status === 'menunggu'
+  const canDelete = isPengklaim && ['menunggu', 'ditolak'].includes(c.status)
   const waNumber = c.owner?.whatsapp ? c.owner.whatsapp.replace(/^0/, '62').replace(/^\+62/, '62') : null
 
   return (
@@ -131,6 +133,19 @@ export default function Klaim() {
           {canCancel && (
             <button onClick={() => updateStatus('ditolak', 'Dibatalkan oleh pengklaim')} className="rounded-lg bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-400">
               Batalkan Klaim
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={async () => {
+                if (!confirm('Hapus klaim ini permanen?')) return
+                const { error } = await supabase.from('claims').delete().eq('id', id)
+                if (error) { setActionError(error.message); return }
+                nav('/saya')
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            >
+              <Trash2 size={16} /> Hapus Klaim
             </button>
           )}
           {canVerify && (
