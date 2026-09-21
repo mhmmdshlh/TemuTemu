@@ -10,21 +10,17 @@ export default function Notifications() {
   const { user } = useAuth()
   const [items, setItems] = useState([])
 
-  const load = async () => {
-    if (!user) return
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-    setItems(data || [])
-  }
-
+  const userId = user?.id
   useEffect(() => {
+    if (!userId) return
     let alive = true
-    load().catch(() => {})
+    supabase.from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (alive) setItems(data || []) })
     return () => { alive = false }
-  }, [user?.id])
+  }, [userId])
 
   if (!user) return null
   const markRead = async (id) => {

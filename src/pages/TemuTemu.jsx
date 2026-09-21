@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Handshake, PackageSearch } from 'lucide-react'
+import { Handshake } from 'lucide-react'
 import Layout from '../components/Layout'
 import ReportCard from '../components/ReportCard'
 import { DesktopSidebar, MobileFilterBar, SearchBar, SortSelect } from '../components/SearchFilter'
@@ -75,6 +75,8 @@ export default function TemuTemu() {
 
   useEffect(() => {
     if (firstLoad) return
+    // Pengambilan data di effect adalah pola yang disengaja (fetch per perubahan filter).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchReturned()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f.q, f.kategori, f.lokasi, f.dari, f.sampai, f.page, f.sort, f.limit, firstLoad])

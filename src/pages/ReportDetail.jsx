@@ -59,7 +59,7 @@ export default function ReportDetail() {
 
   // Ciri khusus hanya diambil bila user adalah pemilik
   useEffect(() => {
-    if (!r || !user || user.id !== r.user_id) { setSecret(''); return }
+    if (!r || !user || user.id !== r.user_id) return
     let alive = true
     supabase.from('report_secrets').select('detail_rahasia').eq('report_id', id).maybeSingle()
       .then(({ data }) => { if (alive) setSecret(data?.detail_rahasia || '') })
@@ -74,7 +74,7 @@ export default function ReportDetail() {
   const [claimErr, setClaimErr] = useState('')
   const [showSecret, setShowSecret] = useState(false)
   useEffect(() => {
-    if (!r || !user) { setMatches([]); setClaims([]); return }
+    if (!r || !user) return
     let alive = true
     const loadRel = async () => {
       const { data: m } = await supabase.from('matches')
