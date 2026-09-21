@@ -63,6 +63,8 @@ function Preview({ type, title, more }) {
         .from('public_reports')
         .select('*')
         .eq('type', type)
+        // Barang yang sudah selesai (dikembalikan/ditemukan) tidak ditampilkan di beranda
+        .not('status', 'in', '(kembali,ditemukan)')
         .order('created_at', { ascending: false })
         .limit(6)
       const rows = data || []
