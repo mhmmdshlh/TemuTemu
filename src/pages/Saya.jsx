@@ -156,7 +156,7 @@ export default function Saya() {
             {klaimList.map((c) => (
               <div key={c.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{c.found?.judul}</p>
+                  <p className="truncate text-sm font-semibold">{c.report?.judul}</p>
                   <p className="mt-0.5 text-xs text-slate-500">{c.claimant?.nama} · {timeAgo(c.created_at)}</p>
                   <p className="mt-1"><Badge status={c.status} /></p>
                   <p className="mt-0.5 text-xs text-slate-500">{CLAIM_STATUS[c.status]}</p>

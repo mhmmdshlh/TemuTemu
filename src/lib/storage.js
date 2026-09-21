@@ -14,7 +14,7 @@ function dataUrlToBlob(dataUrl) {
 /**
  * Upload foto (berupa data URL hasil kompresi PhotoUploader) ke bucket
  * `report-photos` di folder milik user, lalu kembalikan public URL-nya.
- * Idempotent: path per (user, report, urutan) dan upsert true.
+ * Idempotent: path per (user, report/klaim, urutan) dan upsert true.
  */
 export async function uploadReportPhotos(userId, reportId, dataUrls) {
   const urls = []
@@ -35,4 +35,12 @@ export async function uploadReportPhotos(userId, reportId, dataUrls) {
     urls.push(data.publicUrl)
   }
   return urls
+}
+
+/**
+ * Upload foto bukti klaim ke folder khusus per klaim (tidak bertabrakan
+ * dengan foto laporan) di bucket yang sama, lalu kembalikan public URL-nya.
+ */
+export async function uploadClaimPhotos(userId, claimId, dataUrls) {
+  return uploadReportPhotos(userId, `klaim-${claimId}`, dataUrls)
 }

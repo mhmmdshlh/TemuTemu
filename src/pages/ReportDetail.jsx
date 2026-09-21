@@ -72,6 +72,7 @@ export default function ReportDetail() {
   const [bukti, setBukti] = useState('')
   const [buktiFotos, setBuktiFotos] = useState([])
   const [claimErr, setClaimErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
   useEffect(() => {
     if (!r || !user) return
@@ -132,30 +133,34 @@ export default function ReportDetail() {
   const ajukanKlaim = async (e) => {
     e.preventDefault()
     setClaimErr('')
+    if (submitting) return
     try {
       if (!user) throw new Error('Masuk dulu untuk mengajukan klaim.')
       if (isOwner) throw new Error('Tidak bisa mengklaim laporan sendiri.')
       if (bukti.trim().length < 20) throw new Error('Jelaskan bukti kepemilikanmu (minimal 20 karakter).')
-      const { data, error } = await supabase.from('claims').insert([{
+      setSubmitting(true)
+      // RPC security definer: validasi, cegah klaim ganda yang masih menunggu,
+      // dan tandai laporan 'klaim' (di dalam DB, bukan dari klien yang kena RLS).
+      const { data: claimId, error } = await supabase.rpc('claims_ajukan', {
         found_report_id: id,
-        claimant_id: user.id,
         deskripsi_bukti: bukti.trim(),
-      }]).select('id').single()
+      })
       if (error) throw new Error(error.message)
-      // Tandai laporan sedang dalam proses klaim agar terlihat di daftar
-      await supabase.from('reports').update({ status: 'klaim' }).eq('id', id)
+      if (!claimId) throw new Error('Gagal membuat klaim. Coba lagi.')
       // Foto bukti (opsional): upload ke Storage lalu simpan ke claim_photos
       if (buktiFotos.length > 0) {
         const { uploadClaimPhotos } = await import('../lib/storage')
-        const urls = await uploadClaimPhotos(user.id, data.id, buktiFotos)
+        const urls = await uploadClaimPhotos(user.id, claimId, buktiFotos)
         if (urls.length > 0) {
-          await supabase.from('claim_photos').insert(urls.map((url) => ({ claim_id: data.id, jenis: 'bukti', url_privat: url })))
+          await supabase.from('claim_photos').insert(urls.map((url) => ({ claim_id: claimId, jenis: 'bukti', url_privat: url })))
         }
       }
       toast.success('Klaim terkirim. Menunggu penemu meninjaunya.')
-      nav(`/klaim/${data.id}`)
+      nav(`/klaim/${claimId}`)
     } catch (ex) {
       setClaimErr(ex.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -269,7 +274,7 @@ export default function ReportDetail() {
         <div className="mt-1"><PhotoUploader values={buktiFotos} onChange={setBuktiFotos} max={3} /></div>
       </div>
       {claimErr && <p className="text-sm text-red-700" role="alert">{claimErr}</p>}
-      <Button type="submit" size="lg" className="w-full">Kirim klaim</Button>
+      <Button type="submit" size="lg" className="w-full" loading={submitting} disabled={submitting}>{submitting ? 'Mengirim klaim…' : 'Kirim klaim'}</Button>
     </form>
   )
 

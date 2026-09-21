@@ -166,3 +166,54 @@ select cron.schedule(
     where status = 'diterima' and handover_started = true
       and handover_at < now() - interval '1 day'$$
 );
+
+-- ── Ajukan klaim (satu titik masuk dari aplikasi) ─────────────────────────
+-- Validasi + insert + penandaan laporan 'klaim' dilakukan di database
+-- (security definer) karena user pemohon tidak punya hak update tabel
+-- reports (RLS). Sekaligus mencegah klaim ganda yang masih 'menunggu'
+-- dari pemohon yang sama di laporan yang sama (anti-spam).
+create or replace function public.claims_ajukan(found_report_id uuid, deskripsi_bukti text)
+returns uuid language plpgsql security definer as $ajukan$
+declare
+  v_report reports%rowtype;
+  v_claim_id uuid;
+begin
+  select * into v_report from reports where id = found_report_id;
+  if v_report.id is null then
+    raise exception 'Laporan penemuan tidak ditemukan.';
+  end if;
+  if v_report.type != 'found' then
+    raise exception 'Klaim hanya bisa diajukan untuk laporan penemuan.';
+  end if;
+  if v_report.user_id = auth.uid() then
+    raise exception 'Tidak boleh mengklaim laporan sendiri.';
+  end if;
+  if v_report.status not in ('aktif', 'klaim') then
+    raise exception 'Laporan sudah dikembalikan, tidak bisa diklaim.';
+  end if;
+  if deskripsi_bukti is null or length(trim(deskripsi_bukti)) < 20 then
+    raise exception 'Jelaskan bukti kepemilikanmu (minimal 20 karakter).';
+  end if;
+  -- Anti-spam: satu klaim 'menunggu' per pemohon per laporan.
+  if exists (
+    select 1 from claims
+    where found_report_id = claims_ajukan.found_report_id
+      and claimant_id = auth.uid()
+      and status = 'menunggu'
+  ) then
+    raise exception 'Kamu sudah mengajukan klaim yang masih menunggu untuk laporan ini.';
+  end if;
+
+  insert into claims (found_report_id, claimant_id, deskripsi_bukti)
+  values (v_report.id, auth.uid(), trim(deskripsi_bukti))
+  returning id into v_claim_id;
+
+  if v_report.status = 'aktif' then
+    update reports set status = 'klaim', updated_at = now() where id = v_report.id;
+  end if;
+
+  return v_claim_id;
+end;
+$ajukan$;
+
+grant execute on function public.claims_ajukan(uuid, text) to authenticated;
