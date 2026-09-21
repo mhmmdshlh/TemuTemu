@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
-import ClaimDetail from './pages/ClaimDetail'
+import Klaim from './pages/Klaim'
 import Landing from './pages/Landing'
 import Legal from './pages/Legal'
 import Masuk from './pages/Masuk'
@@ -29,7 +29,7 @@ export default function App() {
       <Route path="/buat/hilang" element={<ProtectedRoute><ReportForm side="hilang" /></ProtectedRoute>} />
       <Route path="/buat/temuan" element={<ProtectedRoute><ReportForm side="temuan" /></ProtectedRoute>} />
       <Route path="/edit/:id" element={<ProtectedRoute><ReportForm /></ProtectedRoute>} />
-      <Route path="/klaim/:id" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
+      <Route path="/klaim/:id" element={<ProtectedRoute><Klaim /></ProtectedRoute>} />
       <Route path="/notifikasi" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
       <Route path="/saya" element={<ProtectedRoute><Saya /></ProtectedRoute>} />
       <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

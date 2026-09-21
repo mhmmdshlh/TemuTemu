@@ -76,6 +76,22 @@ export const CLAIM_STATUS = {
   selesai: 'Selesai',
 }
 
+export const CLAIM_STATUS_LABEL = {
+  menunggu: 'Menunggu',
+  diterima: 'Diterima',
+  ditolak: 'Ditolak',
+  dibatalkan: 'Dibatalkan',
+  selesai: 'Selesai',
+}
+
+export const CLAIM_STATUS_COLOR = {
+  menunggu: 'amber',
+  diterima: 'blue',
+  ditolak: 'red',
+  dibatalkan: 'gray',
+  selesai: 'green',
+}
+
 export const MATCH_THRESHOLD_DEFAULT = 55
 
 export const categoryLabel = (id) =>

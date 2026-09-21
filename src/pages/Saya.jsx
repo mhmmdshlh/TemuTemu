@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MoreHorizontal } from 'lucide-react'
 import Layout from '../components/Layout'
@@ -8,8 +8,7 @@ import { ConfirmDialog } from '../components/ui/Sheet'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { CLAIM_STATUS } from '../lib/constants'
-import { deleteReport, listReports, myClaims } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
 import { timeAgo } from '../lib/time'
 
 const LAPOR_FILTERS = [
@@ -50,27 +49,54 @@ function ReportRow({ r, onEdit, onDelete }) {
   )
 }
 
+const CLAIM_SELECT = '*, report:reports!claims_found_report_id_fkey(id, judul), claimant:users!claims_claimant_id_fkey(nama)'
+
 export default function Saya() {
   const { user, logout } = useAuth()
   const nav = useNavigate()
   const toast = useToast()
-  useDbVersion()
   const [tab, setTab] = useState('laporan')
   const [chip, setChip] = useState('semua')
   const [sub, setSub] = useState('keluar')
   const [del, setDel] = useState(null)
+  const [reports, setReports] = useState([])
+  const [claims, setClaims] = useState({ keluar: [], masuk: [] })
+
+  useEffect(() => {
+    if (!user) return
+    let alive = true
+    const load = async () => {
+      const [{ data: rps }, { data: keluar }] = await Promise.all([
+        supabase.from('reports').select('*, photos:report_photos(url)').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('claims').select(CLAIM_SELECT).eq('claimant_id', user.id).order('created_at', { ascending: false }),
+      ])
+      let masuk = []
+      const foundIds = (rps || []).filter((r) => r.type === 'found').map((r) => r.id)
+      if (foundIds.length > 0) {
+        const { data: m } = await supabase
+          .from('claims')
+          .select(CLAIM_SELECT)
+          .in('found_report_id', foundIds)
+          .order('created_at', { ascending: false })
+        masuk = m || []
+      }
+      if (!alive) return
+      setReports(rps || [])
+      setClaims({ keluar: keluar || [], masuk })
+    }
+    load()
+    return () => { alive = false }
+  }, [user?.id])
+
   if (!user) return null
 
-  const lost = listReports({ type: 'lost', mine: user.id, perPage: 200 }).items
-  const found = listReports({ type: 'found', mine: user.id, perPage: 200 }).items
-  const all = [...lost, ...found].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const all = reports
   const shown = all.filter((r) => {
     if (chip === 'lost' || chip === 'found') return r.type === chip
     if (chip === 'aktif') return r.status === 'aktif'
     if (chip === 'selesai') return ['ditemukan', 'kembali'].includes(r.status)
     return true
   })
-  const claims = myClaims(user.id)
   const klaimList = sub === 'keluar' ? claims.keluar : claims.masuk
 
   return (
@@ -150,7 +176,13 @@ export default function Saya() {
         title="Hapus laporan ini?"
         desc="Laporan dan komentarnya akan dihapus permanen."
         confirmLabel="Hapus laporan"
-        onConfirm={async () => { deleteReport(del.id, user.id); toast.success('Laporan dihapus.'); setDel(null) }}
+        onConfirm={async () => {
+          const { error } = await supabase.from('reports').delete().eq('id', del.id)
+          if (error) { toast.error('Gagal menghapus laporan.'); return }
+          setReports((rs) => rs.filter((r) => r.id !== del.id))
+          toast.success('Laporan dihapus.')
+          setDel(null)
+        }}
       />
     </Layout>
   )

@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MoreHorizontal, Send } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { addComment, deleteComment, editComment, listComments } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
 import { containsBlockedContact, sanitizeComment } from '../lib/validation'
 import { timeAgo } from '../lib/time'
 import Avatar from './ui/Avatar'
@@ -11,13 +10,27 @@ import Button from './ui/Button'
 
 export default function Comments({ reportId, ownerId, ownerKind }) {
   const { user } = useAuth()
-  useDbVersion()
-  const items = listComments(reportId)
+  const [items, setItems] = useState([])
   const [text, setText] = useState('')
   const [replyTo, setReplyTo] = useState(null)
   const [err, setErr] = useState('')
 
-  const submit = (e) => {
+  const load = async () => {
+    const { data } = await supabase
+      .from('comments')
+      .select('*, user:users!comments_user_id_fkey(nama, foto_profil)')
+      .eq('report_id', reportId)
+      .order('created_at', { ascending: true })
+    setItems(data || [])
+  }
+
+  useEffect(() => {
+    let alive = true
+    load().then(() => { if (!alive) return }).catch(() => {})
+    return () => { alive = false }
+  }, [reportId])
+
+  const submit = async (e) => {
     e.preventDefault()
     setErr('')
     if (!user || !text.trim()) return
@@ -25,9 +38,26 @@ export default function Comments({ reportId, ownerId, ownerKind }) {
       setErr('Nomor telepon dan email tidak bisa dicantumkan di komentar. Setelah klaim diterima, kalian bisa saling menghubungi lewat WhatsApp.')
       return
     }
-    addComment(reportId, user.id, sanitizeComment(text), replyTo)
+    const { error } = await supabase.from('comments').insert({
+      report_id: reportId,
+      user_id: user.id,
+      parent_id: replyTo,
+      isi: sanitizeComment(text),
+    })
+    if (error) { setErr('Gagal mengirim komentar.'); return }
     setText('')
     setReplyTo(null)
+    load()
+  }
+
+  const editComment = async (id, isi) => {
+    await supabase.from('comments').update({ isi }).eq('id', id).eq('user_id', user.id)
+    load()
+  }
+
+  const deleteComment = async (id) => {
+    await supabase.from('comments').delete().eq('id', id).eq('user_id', user.id)
+    load()
   }
 
   const top = items.filter((c) => !c.parent_id)
@@ -71,7 +101,7 @@ export default function Comments({ reportId, ownerId, ownerKind }) {
                       alert('Nomor telepon dan email tidak bisa dicantumkan di komentar.')
                       return
                     }
-                    if (v.trim()) editComment(c.id, user.id, sanitizeComment(v))
+                    if (v.trim()) editComment(c.id, sanitizeComment(v))
                   }}
                 >
                   Edit
@@ -80,7 +110,7 @@ export default function Comments({ reportId, ownerId, ownerKind }) {
                   className="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
                   onClick={(e) => {
                     e.currentTarget.closest('details').open = false
-                    if (confirm('Hapus komentar ini?')) deleteComment(c.id, user.id)
+                    if (confirm('Hapus komentar ini?')) deleteComment(c.id)
                   }}
                 >
                   Hapus

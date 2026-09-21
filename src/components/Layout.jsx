@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Bell, ChevronDown, Handshake, Home, PackageSearch, Plus, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { listNotifications, unreadCount } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
 import Avatar from './ui/Avatar'
 import Button from './ui/Button'
 
@@ -53,11 +52,25 @@ function BottomNav() {
 
 function BellButton() {
   const { user } = useAuth()
-  useDbVersion()
   const [open, setOpen] = useState(false)
+  const [notifs, setNotifs] = useState([])
+
+  useEffect(() => {
+    if (!user) return
+    let alive = true
+    supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5)
+      .then(({ data }) => { if (alive) setNotifs(data || []) })
+    return () => { alive = false }
+  }, [user?.id, open])
+
   if (!user) return null
-  const unread = unreadCount(user.id)
-  const latest = listNotifications(user.id).slice(0, 5)
+  const unread = notifs.filter((n) => !n.dibaca).length
+  const latest = notifs
   return (
     <div className="relative">
       <button

@@ -1,16 +1,40 @@
+import { useEffect, useState } from 'react'
 import { BellOff } from 'lucide-react'
 import Layout from '../components/Layout'
 import NotificationItem from '../components/NotificationItem'
 import { EmptyState } from '../components/ui/Feedback'
 import { useAuth } from '../contexts/AuthContext'
-import { listNotifications, markAllRead, markRead } from '../lib/mockDb'
-import { useDbVersion } from '../lib/useDb'
+import supabase from '../lib/supabaseClient'
 
 export default function Notifications() {
   const { user } = useAuth()
-  useDbVersion()
+  const [items, setItems] = useState([])
+
+  const load = async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+    setItems(data || [])
+  }
+
+  useEffect(() => {
+    let alive = true
+    load().catch(() => {})
+    return () => { alive = false }
+  }, [user?.id])
+
   if (!user) return null
-  const items = listNotifications(user.id)
+  const markRead = async (id) => {
+    await supabase.from('notifications').update({ dibaca: true }).eq('id', id)
+    setItems((xs) => xs.map((n) => (n.id === id ? { ...n, dibaca: true } : n)))
+  }
+  const markAllRead = async () => {
+    await supabase.from('notifications').update({ dibaca: true }).eq('user_id', user.id)
+    setItems((xs) => xs.map((n) => ({ ...n, dibaca: true })))
+  }
   const baru = items.filter((n) => !n.dibaca)
   const lama = items.filter((n) => n.dibaca)
 

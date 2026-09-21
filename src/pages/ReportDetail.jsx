@@ -134,6 +134,7 @@ export default function ReportDetail() {
     setClaimErr('')
     try {
       if (!user) throw new Error('Masuk dulu untuk mengajukan klaim.')
+      if (isOwner) throw new Error('Tidak bisa mengklaim laporan sendiri.')
       if (bukti.trim().length < 20) throw new Error('Jelaskan bukti kepemilikanmu (minimal 20 karakter).')
       const { data, error } = await supabase.from('claims').insert([{
         found_report_id: id,
@@ -141,7 +142,16 @@ export default function ReportDetail() {
         deskripsi_bukti: bukti.trim(),
       }]).select('id').single()
       if (error) throw new Error(error.message)
-      // Foto bukti (base64/data-url) butuh Storage — untuk sekarang klaim tanpa foto dulu.
+      // Tandai laporan sedang dalam proses klaim agar terlihat di daftar
+      await supabase.from('reports').update({ status: 'klaim' }).eq('id', id)
+      // Foto bukti (opsional): upload ke Storage lalu simpan ke claim_photos
+      if (buktiFotos.length > 0) {
+        const { uploadClaimPhotos } = await import('../lib/storage')
+        const urls = await uploadClaimPhotos(user.id, data.id, buktiFotos)
+        if (urls.length > 0) {
+          await supabase.from('claim_photos').insert(urls.map((url) => ({ claim_id: data.id, jenis: 'bukti', url_privat: url })))
+        }
+      }
       toast.success('Klaim terkirim. Menunggu penemu meninjaunya.')
       nav(`/klaim/${data.id}`)
     } catch (ex) {
@@ -296,7 +306,7 @@ export default function ReportDetail() {
 
       {isOwner && matches.length > 0 && (
         <div className="mb-4">
-          <MatchCard reportId={id} items={matches.map((m) => ({ ...m, lost: m.lost_report_id === id ? r : m.lost, found: m.found_report_id === id ? r : m.found }))} onDismiss={(mid) => { dismissMatch(mid, user.id); toast.success('Pasangan disembunyikan.') }} />
+          <MatchCard reportId={id} items={matches.map((m) => ({ ...m, lost: m.lost_report_id === id ? r : m.lost, found: m.found_report_id === id ? r : m.found }))} onDismiss={async (mid) => { await supabase.from('matches').update({ status: 'diabaikan' }).eq('id', mid); setMatches((p) => p.filter((m) => m.id !== mid)); toast.success('Pasangan disembunyikan.') }} />
         </div>
       )}
 
