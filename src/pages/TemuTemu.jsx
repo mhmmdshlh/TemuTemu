@@ -40,7 +40,8 @@ export default function TemuTemu() {
       if (f.sampai) query = query.lte('waktu_kejadian', f.sampai)
 
       const ascending = f.sort === 'terlama'
-      query = query.order('updated_at', { ascending })
+      // View public_reports tidak punya kolom updated_at — pakai created_at
+      query = query.order('created_at', { ascending })
 
       const offset = (f.page - 1) * f.limit
       query = query.range(offset, offset + f.limit - 1)

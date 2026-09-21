@@ -60,6 +60,10 @@ export default function ReportList() {
         .from('public_reports')
         .select('*', { count: 'exact' })
 
+      // Laporan yang sudah selesai (dikembalikan/ditemukan) tidak tampil di sini —
+      // yang 'kembali' ditampilkan khusus di menu TemuTemu.
+      query = query.not('status', 'in', '(kembali,ditemukan)')
+
       // Filter jenis
       if (jenis === 'lost' || jenis === 'found') {
         query = query.eq('type', jenis)
@@ -108,9 +112,9 @@ export default function ReportList() {
     setCountsLoading(true)
     try {
       const baseFilter = { q: f.q, kategori: f.kategori, lokasi: f.lokasi, dari: f.dari, sampai: f.sampai }
-      let allQ = supabase.from('public_reports').select('*', { count: 'exact', head: true })
-      let lostQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).eq('type', 'lost')
-      let foundQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).eq('type', 'found')
+      let allQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).not('status', 'in', '(kembali,ditemukan)')
+      let lostQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).eq('type', 'lost').not('status', 'in', '(kembali,ditemukan)')
+      let foundQ = supabase.from('public_reports').select('*', { count: 'exact', head: true }).eq('type', 'found').not('status', 'in', '(kembali,ditemukan)')
 
       if (baseFilter.q) {
         allQ = allQ.or(`judul.ilike.%${baseFilter.q}%,deskripsi.ilike.%${baseFilter.q}%`)
