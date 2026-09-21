@@ -19,6 +19,7 @@ export default function Klaim() {
   const [actionError, setActionError] = useState('')
   const [alasanTolak, setAlasanTolak] = useState('')
   const [me, setMe] = useState(null)
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -35,24 +36,27 @@ export default function Klaim() {
         return
       }
       setMe(u?.user?.id || null)
-      const [{ data: rp }, { data: cp }, { data: ph }] = await Promise.all([
+      const [{ data: rp }, { data: cp }, { data: ph }, { data: raw }] = await Promise.all([
         supabase.from('public_reports').select('*').eq('id', row.found_report_id).maybeSingle(),
-        supabase.from('users').select('nama, status').eq('id', row.claimant_id).maybeSingle(),
+        supabase.from('users').select('nama, status, fakultas, whatsapp').eq('id', row.claimant_id).maybeSingle(),
         supabase.from('claim_photos').select('url_privat').eq('claim_id', id).order('created_at'),
+        supabase.from('reports').select('user_id, lokasi_simpan').eq('id', row.found_report_id).maybeSingle(),
       ])
-      if (!alive) return
+      // Ciri khusus: pemilik selalu bisa; pengklaim otomatis terbuka setelah klaim disetujui (RLS).
+      const { data: s } = await supabase.from('report_secrets').select('detail_rahasia').eq('report_id', row.found_report_id).maybeSingle()
       let op = null
-      if (rp?.user_id) {
-        const { data: o } = await supabase.from('users').select('nama, whatsapp').eq('id', rp.user_id).maybeSingle()
+      if (raw?.user_id) {
+        const { data: o } = await supabase.from('users').select('nama, whatsapp').eq('id', raw.user_id).maybeSingle()
         op = o
       }
-      setC({ ...row, report: rp, claimant: cp, owner: op })
+      if (!alive) return
+      setC({ ...row, report: rp, raw, claimant: cp, owner: op, secret: s?.detail_rahasia || '' })
       setPhotos((ph || []).map((p) => p.url_privat).filter(Boolean))
       setLoading(false)
     }
     if (id) load()
     return () => { alive = false }
-  }, [id])
+  }, [id, tick])
 
   const updateStatus = async (status, alasan = '') => {
     setActionError('')
@@ -60,7 +64,7 @@ export default function Klaim() {
     const args = status === 'diterima' ? { claim_id: id } : { claim_id: id, alasan }
     const { error } = await supabase.rpc(rpc, args)
     if (error) { setActionError(error.message); return }
-    setC((prev) => ({ ...prev, status, alasan_tolak: alasan || prev.alasan_tolak }))
+    setTick((t) => t + 1)
   }
 
   if (loading) return (
@@ -75,13 +79,15 @@ export default function Klaim() {
   )
 
   const r = c.report || {}
-  const isPemilik = me && r.user_id === me
+  const approved = ['diterima', 'selesai'].includes(c.status)
+  const isPemilik = me && c.raw?.user_id === me
   const isPengklaim = me && c.claimant_id === me
   const canApprove = isPemilik && c.status === 'menunggu'
   const canVerify = isPemilik && c.status === 'diterima'
-  const canCancel = isPengklaim && c.status === 'menunggu'
   const canDelete = isPengklaim && ['menunggu', 'ditolak'].includes(c.status)
-  const waNumber = c.owner?.whatsapp ? c.owner.whatsapp.replace(/^0/, '62').replace(/^\+62/, '62') : null
+  const toWa = (n) => (n ? n.replace(/^\+62/, '62').replace(/^0/, '62') : null)
+  const waToClaimant = isPemilik && approved ? toWa(c.claimant?.whatsapp) : null
+  const waToOwner = isPengklaim && approved ? toWa(c.owner?.whatsapp) : null
 
   return (
     <Layout appBar={{ type: 'back', title: 'Detail Klaim' }} bottomNav={false}>
@@ -112,6 +118,50 @@ export default function Klaim() {
 
         {photos.length > 0 && <PhotoGallery photos={photos} title="Foto klaim" />}
 
+        {approved && (isPemilik || isPengklaim) && (
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+            <h2 className="text-base font-semibold text-green-900">Klaim disetujui — silakan koordinasi</h2>
+            {isPemilik && (
+              <>
+                <p className="mt-2 text-sm text-slate-800">
+                  <span className="font-semibold">Pengklaim:</span> {c.claimant?.nama || 'Anonim'}
+                  {c.claimant?.status && (
+                    <> · <span className="capitalize">{c.claimant.status}</span>{c.claimant.fakultas ? ` (${c.claimant.fakultas})` : ''}</>
+                  )}
+                </p>
+                {c.secret && (
+                  <p className="mt-2 text-sm text-slate-800"><span className="font-semibold">Ciri khusus barang (rahasia):</span> {c.secret}</p>
+                )}
+                <p className="mt-1 text-xs text-slate-600">Gunakan ciri khusus ini untuk memverifikasi kebenaran barang saat ketemuan.</p>
+                {waToClaimant && (
+                  <a href={`https://wa.me/${waToClaimant}`} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                    Hubungi Pengklaim via WhatsApp
+                  </a>
+                )}
+              </>
+            )}
+            {isPengklaim && (
+              <>
+                <p className="mt-2 text-sm text-slate-800"><span className="font-semibold">Pelapor:</span> {c.owner?.nama || r.owner_nama || 'Anonim'}</p>
+                {c.secret && (
+                  <p className="mt-2 text-sm text-slate-800"><span className="font-semibold">Ciri khusus barang:</span> {c.secret}</p>
+                )}
+                {c.raw?.lokasi_simpan && (
+                  <p className="mt-2 text-sm text-slate-800"><span className="font-semibold">Barang disimpan di:</span> {c.raw.lokasi_simpan}</p>
+                )}
+                {waToOwner && (
+                  <a href={`https://wa.me/${waToOwner}`} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+                    Hubungi Pelapor via WhatsApp
+                  </a>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {!approved && isPengklaim && c.status === 'menunggu' && (
+          <p className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">Ciri khusus barang & kontak pelapor akan terbuka setelah klaimmu disetujui.</p>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           {actionError && <p className="w-full text-sm text-red-600">{actionError}</p>}
           {canApprove && (
@@ -129,11 +179,6 @@ export default function Klaim() {
                 <button onClick={() => updateStatus('ditolak', alasanTolak || 'Ditolak')} className="mt-2 w-full rounded-lg bg-red-600 py-1 text-xs font-semibold text-white hover:bg-red-700">Konfirmasi Penolakan</button>
               </div>
             </details>
-          )}
-          {canCancel && (
-            <button onClick={() => updateStatus('ditolak', 'Dibatalkan oleh pengklaim')} className="rounded-lg bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-400">
-              Batalkan Klaim
-            </button>
           )}
           {canDelete && (
             <button
@@ -156,11 +201,6 @@ export default function Klaim() {
             }} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700">
               Tandai Selesai
             </button>
-          )}
-          {waNumber && c.status === 'diterima' && (
-            <a href={`https://wa.me/${waNumber}`} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-              Hubungi via WhatsApp
-            </a>
           )}
           {c.status === 'menunggu' && isPengklaim && (
             <p className="text-sm text-slate-500">Klaimmu sedang menunggu persetujuan pelapor.</p>

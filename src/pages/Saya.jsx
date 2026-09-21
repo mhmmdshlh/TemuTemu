@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, Trash2 } from 'lucide-react'
 import Layout from '../components/Layout'
 import Badge from '../components/ui/Badge'
 import CategoryIcon from '../components/ui/CategoryIcon'
@@ -161,9 +161,26 @@ export default function Saya() {
                   <p className="mt-1"><Badge status={c.status} /></p>
                   <p className="mt-0.5 text-xs text-slate-500">{CLAIM_STATUS[c.status]}</p>
                 </div>
-                <Link to={`/klaim/${c.id}`} className="inline-flex min-h-[44px] shrink-0 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
-                  {sub === 'masuk' ? 'Tinjau' : 'Lihat'}
-                </Link>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Link to={`/klaim/${c.id}`} className="inline-flex min-h-[44px] items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">
+                    {sub === 'masuk' ? 'Tinjau' : 'Lihat'}
+                  </Link>
+                  {sub === 'keluar' && ['menunggu', 'ditolak'].includes(c.status) && (
+                    <button
+                      aria-label="Hapus klaim"
+                      onClick={async () => {
+                        if (!confirm('Hapus klaim ini permanen?')) return
+                        const { error } = await supabase.from('claims').delete().eq('id', c.id)
+                        if (error) { toast.error('Gagal menghapus klaim.'); return }
+                        setClaims(({ keluar, masuk }) => ({ keluar: keluar.filter((k) => k.id !== c.id), masuk }))
+                        toast.success('Klaim dihapus.')
+                      }}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                    >
+                      <Trash2 size={18} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

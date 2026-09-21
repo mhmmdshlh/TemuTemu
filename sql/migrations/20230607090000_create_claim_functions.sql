@@ -1,3 +1,14 @@
+-- Ciri khusus laporan: setelah klaim disetujui, pengklaim boleh melihatnya.
+drop policy if exists "report_secrets_claimant_approved" on report_secrets;
+create policy "report_secrets_claimant_approved" on report_secrets
+  for select to authenticated
+  using (exists (
+    select 1 from claims c
+    where c.found_report_id = report_secrets.report_id
+      and c.claimant_id = auth.uid()
+      and c.status in ('diterima', 'selesai')
+  ));
+
 -- RPC Functions for Claim Management
 -- Alur: ajukan -> menunggu setuju -> disetujui -> komunikasi WA -> serah terima -> verifikasi -> selesai
 
